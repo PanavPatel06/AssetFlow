@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MailCheck } from "lucide-react";
+import { ArrowLeft, MailCheck } from "@/components/icons";
 import { Field, Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Check, UserCog } from "lucide-react";
+import { ChevronDown, Check, UserCog } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { useCurrentUser } from "@/lib/currentUser";
 import { ROLE_LABELS } from "@/lib/roles";

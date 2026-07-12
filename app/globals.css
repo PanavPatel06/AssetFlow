@@ -33,8 +33,8 @@
 }
 
 :root {
-  /* Base character spacing applied to body text. Bump to 2px for more air. */
-  --tracking-base: 1px;
+  /* Base character spacing applied to body text. */
+  --tracking-base: 0.5px;
 }
 
 /* --- Base layer ------------------------------------------------------- */

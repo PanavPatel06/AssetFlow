@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ShieldAlert, Building2 } from "lucide-react";
+import { Plus, ShieldAlert, Building2 } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";

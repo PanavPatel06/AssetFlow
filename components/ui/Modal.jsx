@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 
 // Centered dialog with a translucent backdrop. Controlled via `open`/`onClose`.

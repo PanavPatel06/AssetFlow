@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X } from "lucide-react";
+import { X } from "@/components/icons";
 import { cn } from "@/lib/cn";
 import { navForRole } from "@/lib/nav";
 import { useCurrentUser } from "@/lib/currentUser";

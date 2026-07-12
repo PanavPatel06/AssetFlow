@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Info } from "lucide-react";
+import { ArrowRight, Info } from "@/components/icons";
 import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import { departments } from "@/lib/mockData";

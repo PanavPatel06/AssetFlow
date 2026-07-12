@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Search, Boxes } from "lucide-react";
+import { Plus, Search, Boxes } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/ui/StatusPill";

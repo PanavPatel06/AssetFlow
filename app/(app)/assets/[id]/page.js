@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowLeftRight, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Wrench } from "@/components/icons";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/ui/StatusPill";

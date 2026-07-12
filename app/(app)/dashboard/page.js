@@ -10,7 +10,7 @@ import {
   Undo2,
   Plus,
   AlertTriangle,
-} from "lucide-react";
+} from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import KpiCard from "@/components/ui/KpiCard";
 import Card from "@/components/ui/Card";

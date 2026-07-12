@@ -9,7 +9,7 @@ import {
   XCircle,
   AlertTriangle,
   ShieldAlert,
-} from "lucide-react";
+} from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";

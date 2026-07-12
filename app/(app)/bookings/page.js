@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Plus, CalendarClock, Ban, Info, GripVertical } from "lucide-react";
+import { Plus, CalendarClock, Ban, Info, GripVertical } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -58,19 +58,18 @@ export default function BookingsPage() {
     );
   }
 
-  // Drag-to-reschedule: move a booking to a new start time (same day), keeping
-  // its duration. Rejected (reverts) if it would overlap another booking.
-  // Returns true if applied.
-  function rescheduleBooking(id, newStartMin) {
-    let applied = false;
+  // Set a booking's start + end (same day) from dragging or resizing. Values
+  // are snapped to 15 min and clamped to the day; rejected (reverts) if the new
+  // slot would overlap another booking on the same resource.
+  function updateBookingTimes(id, startMin, endMin) {
     setBookings((list) => {
       const b = list.find((x) => x.id === id);
       if (!b) return list;
-      const dur = minsInDay(b.end) - minsInDay(b.start);
-      let startMin = Math.round(newStartMin / SNAP) * SNAP;
-      startMin = Math.max(DAY_START * 60, Math.min(startMin, DAY_END * 60 - dur));
-      const endMin = startMin + dur;
       const day = dateOf(b.start);
+      let s = Math.round(startMin / SNAP) * SNAP;
+      let e = Math.round(endMin / SNAP) * SNAP;
+      s = Math.max(DAY_START * 60, Math.min(s, DAY_END * 60 - SNAP));
+      e = Math.min(DAY_END * 60, Math.max(e, s + SNAP));
 
       const clash = list.some(
         (o) =>
@@ -78,19 +77,17 @@ export default function BookingsPage() {
           o.assetId === b.assetId &&
           o.status !== "CANCELLED" &&
           dateOf(o.start) === day &&
-          startMin < minsInDay(o.end) &&
-          endMin > minsInDay(o.start)
+          s < minsInDay(o.end) &&
+          e > minsInDay(o.start)
       );
       if (clash) return list; // reject -> block snaps back
 
-      applied = true;
       return list.map((x) =>
         x.id === id
-          ? { ...x, start: `${day}T${fmtMin(startMin)}:00`, end: `${day}T${fmtMin(endMin)}:00` }
+          ? { ...x, start: `${day}T${fmtMin(s)}:00`, end: `${day}T${fmtMin(e)}:00` }
           : x
       );
     });
-    return applied;
   }
 
   return (
@@ -125,9 +122,11 @@ export default function BookingsPage() {
               })}
             </span>
           </div>
-          <p className="mb-4 text-xs text-black/40">Drag a booking up or down to reschedule it.</p>
+          <p className="mb-4 text-xs text-black/40">
+            Drag a booking to move it, or drag its top/bottom edge to change the timing.
+          </p>
 
-          <DayTimeline bookings={dayBookings} onReschedule={rescheduleBooking} />
+          <DayTimeline bookings={dayBookings} onUpdate={updateBookingTimes} />
         </Card>
 
         <div>
@@ -176,36 +175,60 @@ export default function BookingsPage() {
 }
 
 /* ------------------------------- Day timeline ------------------------------ */
-function DayTimeline({ bookings, onReschedule }) {
+const MIN_H = (SNAP / TOTAL_MIN) * HEIGHT; // px height of the minimum (15 min) slot
+const EDGE = 9; // px hit-zone at top/bottom for resize vs. move
+
+function DayTimeline({ bookings, onUpdate }) {
   const hours = [];
   for (let h = DAY_START; h <= DAY_END; h++) hours.push(h);
   const rowH = HEIGHT / (DAY_END - DAY_START);
 
-  // Drag state: which booking, and its live preview top (px).
+  // Live drag/resize state: { id, mode, top, height }.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
 
   const topFor = (b) => ((minsInDay(b.start) - DAY_START * 60) / TOTAL_MIN) * HEIGHT;
   const heightFor = (b) =>
-    Math.max(((minsInDay(b.end) - minsInDay(b.start)) / TOTAL_MIN) * HEIGHT, 24);
+    Math.max(((minsInDay(b.end) - minsInDay(b.start)) / TOTAL_MIN) * HEIGHT, MIN_H);
 
   function onPointerDown(e, b) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offY = e.clientY - rect.top;
+    const originTop = topFor(b);
+    const originHeight = heightFor(b);
+    // Grab near an edge -> resize that edge; otherwise move the whole block.
+    const mode = offY < EDGE ? "top" : offY > rect.height - EDGE ? "bottom" : "move";
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { id: b.id, startY: e.clientY, originTop: topFor(b), height: heightFor(b) };
-    setDrag({ id: b.id, top: topFor(b) });
+    dragRef.current = { id: b.id, mode, startY: e.clientY, originTop, originHeight };
+    setDrag({ id: b.id, mode, top: originTop, height: originHeight });
   }
+
   function onPointerMove(e) {
     const d = dragRef.current;
     if (!d) return;
     const delta = e.clientY - d.startY;
-    const top = Math.max(0, Math.min(d.originTop + delta, HEIGHT - d.height));
-    setDrag({ id: d.id, top });
+    let top = d.originTop;
+    let height = d.originHeight;
+
+    if (d.mode === "move") {
+      top = Math.max(0, Math.min(d.originTop + delta, HEIGHT - d.originHeight));
+    } else if (d.mode === "top") {
+      const bottom = d.originTop + d.originHeight;
+      top = Math.max(0, Math.min(d.originTop + delta, bottom - MIN_H));
+      height = bottom - top;
+    } else {
+      // bottom edge
+      height = Math.max(MIN_H, Math.min(d.originHeight + delta, HEIGHT - d.originTop));
+    }
+    setDrag({ id: d.id, mode: d.mode, top, height });
   }
+
   function onPointerUp() {
     const d = dragRef.current;
     if (!d || !drag) return;
-    const newStartMin = DAY_START * 60 + (drag.top / HEIGHT) * TOTAL_MIN;
-    onReschedule(d.id, newStartMin);
+    const startMin = DAY_START * 60 + (drag.top / HEIGHT) * TOTAL_MIN;
+    const endMin = DAY_START * 60 + ((drag.top + drag.height) / HEIGHT) * TOTAL_MIN;
+    onUpdate(d.id, startMin, endMin);
     dragRef.current = null;
     setDrag(null);
   }
@@ -238,32 +261,40 @@ function DayTimeline({ bookings, onReschedule }) {
         )}
 
         {bookings.map((b) => {
-          const isDragging = drag?.id === b.id;
-          const top = isDragging ? drag.top : topFor(b);
-          const height = heightFor(b);
-          // Live time label while dragging.
-          const previewStart = isDragging
-            ? Math.round((DAY_START * 60 + (drag.top / HEIGHT) * TOTAL_MIN) / SNAP) * SNAP
-            : minsInDay(b.start);
-          const dur = minsInDay(b.end) - minsInDay(b.start);
+          const active = drag?.id === b.id;
+          const top = active ? drag.top : topFor(b);
+          const height = active ? drag.height : heightFor(b);
+          // Live time labels from the current preview geometry.
+          const startMin = Math.round((DAY_START * 60 + (top / HEIGHT) * TOTAL_MIN) / SNAP) * SNAP;
+          const endMin = Math.round((DAY_START * 60 + ((top + height) / HEIGHT) * TOTAL_MIN) / SNAP) * SNAP;
           return (
             <div
               key={b.id}
               onPointerDown={(e) => onPointerDown(e, b)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
-              className={`group absolute left-1.5 right-1.5 flex touch-none select-none items-start gap-1 overflow-hidden rounded-[10px] border px-2 py-1.5 ${
-                isDragging
+              className={`group absolute left-1.5 right-1.5 touch-none select-none overflow-hidden rounded-[10px] border px-2 py-1.5 ${
+                active
                   ? "z-10 cursor-grabbing border-black/25 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
                   : "cursor-grab border-black/[0.08] bg-white hover:border-black/20"
               }`}
               style={{ top, height }}
             >
-              <GripVertical className="mt-0.5 h-3 w-3 shrink-0 text-black/25" strokeWidth={1.5} />
-              <div className="min-w-0">
-                <div className="truncate text-xs text-foreground">{b.purpose}</div>
-                <div className="font-mono text-[10px] text-black/45">
-                  {fmtMin(previewStart)}–{fmtMin(previewStart + dur)}
+              {/* Resize affordance bars (visual only; edge detection is by position) */}
+              <span className="pointer-events-none absolute inset-x-0 top-0 flex h-2 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="h-0.5 w-6 rounded-full bg-black/20" />
+              </span>
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-2 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="h-0.5 w-6 rounded-full bg-black/20" />
+              </span>
+
+              <div className="flex items-start gap-1">
+                <GripVertical className="mt-0.5 h-3 w-3 shrink-0 text-black/25" strokeWidth={1.5} />
+                <div className="min-w-0">
+                  <div className="truncate text-xs text-foreground">{b.purpose}</div>
+                  <div className="font-mono text-[10px] text-black/45">
+                    {fmtMin(startMin)}–{fmtMin(endMin)}
+                  </div>
                 </div>
               </div>
             </div>

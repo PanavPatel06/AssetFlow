@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck, Boxes, CalendarClock } from "lucide-react";
+import { ShieldCheck, Boxes, CalendarClock } from "@/components/icons";
 import PixelGlyph from "@/components/motion/PixelGlyph";
 
 // Two-panel auth shell: brand story on the left, form (children) on the right.
@@ -13,7 +13,7 @@ export default function AuthLayout({ children }) {
         </Link>
 
         <div className="max-w-md">
-          <PixelGlyph seed="assetflow-auth" size={44} />
+          <PixelGlyph kind="brand" size={44} />
           <h1 className="mt-6 font-display text-4xl font-light leading-tight tracking-tight text-foreground">
             Track, allocate, and maintain every asset — in one place.
           </h1>

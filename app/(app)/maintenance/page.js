@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Wrench, Paperclip, ArrowRight } from "lucide-react";
+import { Plus, Wrench, Paperclip, ArrowRight } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";

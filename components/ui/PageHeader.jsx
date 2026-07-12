@@ -2,13 +2,27 @@ import Eyebrow from "./Eyebrow";
 import BlurInHeading from "@/components/motion/BlurInHeading";
 import PixelGlyph from "@/components/motion/PixelGlyph";
 
-// The standard top-of-screen block: animated pixel glyph + eyebrow pill + light
-// heading that reveals word-by-word, an optional description, and actions.
-export default function PageHeader({ eyebrow, title, description, actions }) {
+// Maps each section's eyebrow label to the pixel glyph that depicts it.
+const GLYPH_FOR_EYEBROW = {
+  Overview: "dashboard",
+  Assets: "assets",
+  Allocation: "allocation",
+  Bookings: "bookings",
+  Maintenance: "maintenance",
+  Audit: "audit",
+  Reports: "reports",
+  Activity: "activity",
+  Organization: "organization",
+};
+
+// The standard top-of-screen block: purposeful pixel glyph + eyebrow pill +
+// light heading that reveals word-by-word, an optional description, and actions.
+export default function PageHeader({ eyebrow, title, description, actions, glyph }) {
+  const kind = glyph || GLYPH_FOR_EYEBROW[eyebrow] || "brand";
   return (
     <div className="mb-8 flex flex-col gap-4 border-b border-black/[0.06] pb-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <PixelGlyph seed={title || eyebrow || "assetflow"} size={36} />
+        <PixelGlyph kind={kind} size={36} />
         {eyebrow && <Eyebrow className="mt-3">{eyebrow}</Eyebrow>}
         <BlurInHeading
           text={title}

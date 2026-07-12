@@ -11,7 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Download, TrendingUp, ShieldAlert } from "lucide-react";
+import { Download, TrendingUp, ShieldAlert } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";

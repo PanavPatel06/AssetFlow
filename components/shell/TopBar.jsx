@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, Bell } from "lucide-react";
+import { Menu, Bell } from "@/components/icons";
 import RoleSwitcher from "./RoleSwitcher";
 import { useCurrentUser } from "@/lib/currentUser";
 import { notifications } from "@/lib/mockData";
