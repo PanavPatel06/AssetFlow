@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+/*
+  AssetFlow design tokens — translated from DESIGN.md.
+  "Quiet luxury" SaaS: warm cream canvas, near-black light-weight type,
+  hairline borders (rgba black), lots of whitespace, subtle motion.
+*/
+
+@theme {
+  /* Solid colors -> generate utilities like bg-background, text-foreground, bg-card */
+  --color-background: #f5f4f0; /* warm cream page canvas (NOT pure white) */
+  --color-foreground: #111111; /* headings + primary text */
+  --color-card: #ffffff;
+  --color-card-hover: #fafaf8;
+  --color-primary: #111111; /* filled button bg */
+  --color-primary-hover: #333333;
+  --color-primary-foreground: #ffffff;
+  --color-live: #22c55e; /* the single green "live"/running dot */
+
+  /* Font families -> font-sans, font-mono, font-display, font-logo */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-ibm-plex), var(--font-geist-sans), sans-serif;
+  --font-logo: var(--font-courier-prime), ui-monospace, monospace;
+
+  /* Radii -> rounded-control (14px small components), rounded-card (16px cards/nav) */
+  --radius-control: 14px;
+  --radius-card: 16px;
+}
+
+/* --- Base layer ------------------------------------------------------- */
+@layer base {
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Global rule from DESIGN.md: headings are always weight 300 with tight tracking. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: var(--color-foreground);
+  }
+
+  ::selection {
+    background: rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* --- Reusable utility helpers ---------------------------------------- */
+@layer components {
+  /* Eyebrow / badge pill used at the top of sections and as small labels */
+  .eyebrow {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px]
+           uppercase tracking-widest text-black/40;
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  /* Muted body copy — never pure black, per DESIGN.md */
+  .muted {
+    color: rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* --- Motion ----------------------------------------------------------- */
+
+/* Word-by-word "blur-in" reveal (headings). Initial state set inline by the
+   BlurInHeading component; this is the shared transition + final state. */
+.blur-word {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(12px);
+  transition: opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.blur-word.is-visible {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
+/* Card / block reveal on scroll (whole element, not per word) */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 700ms ease, transform 700ms ease;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Infinite marquee (skills/ticker band) */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee var(--marquee-duration, 40s) linear infinite;
+}
+
+/* Live status dot pulse */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-live {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blur-word,
+  .reveal {
+    transition: none;
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+  .animate-marquee,
+  .animate-live {
+    animation: none;
+  }
+}
