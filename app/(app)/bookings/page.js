@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, CalendarClock, Ban, Info } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, CalendarClock, Ban, Info, GripVertical } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -21,6 +21,8 @@ import { formatTime } from "@/lib/format";
 const DAY_START = 8; // 08:00
 const DAY_END = 20; // 20:00
 const TOTAL_MIN = (DAY_END - DAY_START) * 60;
+const HEIGHT = 520; // px height of the day column
+const SNAP = 15; // snap dragging to 15-minute increments
 const DEFAULT_DATE = "2026-07-13";
 
 const minsInDay = (iso) => {
@@ -28,6 +30,8 @@ const minsInDay = (iso) => {
   return d.getHours() * 60 + d.getMinutes();
 };
 const dateOf = (iso) => iso.slice(0, 10);
+const pad = (n) => String(n).padStart(2, "0");
+const fmtMin = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
 export default function BookingsPage() {
   const { user } = useCurrentUser();
@@ -40,12 +44,10 @@ export default function BookingsPage() {
 
   const resource = resources.find((r) => r.id === assetId);
 
-  // Bookings for the selected resource + date (ignoring cancelled for the grid).
   const dayBookings = bookings.filter(
     (b) => b.assetId === assetId && dateOf(b.start) === date && b.status !== "CANCELLED"
   );
 
-  // All bookings for this resource (for the list below), newest first.
   const resourceBookings = bookings
     .filter((b) => b.assetId === assetId)
     .sort((a, b) => new Date(b.start) - new Date(a.start));
@@ -54,6 +56,41 @@ export default function BookingsPage() {
     setBookings((list) =>
       list.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b))
     );
+  }
+
+  // Drag-to-reschedule: move a booking to a new start time (same day), keeping
+  // its duration. Rejected (reverts) if it would overlap another booking.
+  // Returns true if applied.
+  function rescheduleBooking(id, newStartMin) {
+    let applied = false;
+    setBookings((list) => {
+      const b = list.find((x) => x.id === id);
+      if (!b) return list;
+      const dur = minsInDay(b.end) - minsInDay(b.start);
+      let startMin = Math.round(newStartMin / SNAP) * SNAP;
+      startMin = Math.max(DAY_START * 60, Math.min(startMin, DAY_END * 60 - dur));
+      const endMin = startMin + dur;
+      const day = dateOf(b.start);
+
+      const clash = list.some(
+        (o) =>
+          o.id !== id &&
+          o.assetId === b.assetId &&
+          o.status !== "CANCELLED" &&
+          dateOf(o.start) === day &&
+          startMin < minsInDay(o.end) &&
+          endMin > minsInDay(o.start)
+      );
+      if (clash) return list; // reject -> block snaps back
+
+      applied = true;
+      return list.map((x) =>
+        x.id === id
+          ? { ...x, start: `${day}T${fmtMin(startMin)}:00`, end: `${day}T${fmtMin(endMin)}:00` }
+          : x
+      );
+    });
+    return applied;
   }
 
   return (
@@ -69,7 +106,6 @@ export default function BookingsPage() {
         }
       />
 
-      {/* Resource + date pickers */}
       <div className="mb-3 flex flex-col gap-2 sm:flex-row">
         <Select value={assetId} onChange={(e) => setAssetId(e.target.value)} className="sm:w-72">
           {resources.map((r) => (
@@ -80,9 +116,8 @@ export default function BookingsPage() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
-        {/* Day calendar */}
         <Card hover={false} className="lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between">
             <h3 className="text-lg font-light text-foreground">{resource.name}</h3>
             <span className="text-xs text-black/45">
               {new Date(date + "T00:00:00").toLocaleDateString("en-US", {
@@ -90,11 +125,11 @@ export default function BookingsPage() {
               })}
             </span>
           </div>
+          <p className="mb-4 text-xs text-black/40">Drag a booking up or down to reschedule it.</p>
 
-          <DayTimeline bookings={dayBookings} />
+          <DayTimeline bookings={dayBookings} onReschedule={rescheduleBooking} />
         </Card>
 
-        {/* Booking list */}
         <div>
           <h3 className="mb-2 text-lg font-light text-foreground">All Bookings</h3>
           {resourceBookings.length === 0 ? (
@@ -141,30 +176,58 @@ export default function BookingsPage() {
 }
 
 /* ------------------------------- Day timeline ------------------------------ */
-function DayTimeline({ bookings }) {
+function DayTimeline({ bookings, onReschedule }) {
   const hours = [];
   for (let h = DAY_START; h <= DAY_END; h++) hours.push(h);
+  const rowH = HEIGHT / (DAY_END - DAY_START);
+
+  // Drag state: which booking, and its live preview top (px).
+  const [drag, setDrag] = useState(null);
+  const dragRef = useRef(null);
+
+  const topFor = (b) => ((minsInDay(b.start) - DAY_START * 60) / TOTAL_MIN) * HEIGHT;
+  const heightFor = (b) =>
+    Math.max(((minsInDay(b.end) - minsInDay(b.start)) / TOTAL_MIN) * HEIGHT, 24);
+
+  function onPointerDown(e, b) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { id: b.id, startY: e.clientY, originTop: topFor(b), height: heightFor(b) };
+    setDrag({ id: b.id, top: topFor(b) });
+  }
+  function onPointerMove(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    const delta = e.clientY - d.startY;
+    const top = Math.max(0, Math.min(d.originTop + delta, HEIGHT - d.height));
+    setDrag({ id: d.id, top });
+  }
+  function onPointerUp() {
+    const d = dragRef.current;
+    if (!d || !drag) return;
+    const newStartMin = DAY_START * 60 + (drag.top / HEIGHT) * TOTAL_MIN;
+    onReschedule(d.id, newStartMin);
+    dragRef.current = null;
+    setDrag(null);
+  }
 
   return (
-    <div className="relative flex" style={{ height: 520 }}>
-      {/* Hour labels */}
+    <div className="relative flex" style={{ height: HEIGHT }}>
       <div className="w-14 shrink-0">
         {hours.map((h) => (
-          <div key={h} className="relative" style={{ height: 520 / (DAY_END - DAY_START) }}>
+          <div key={h} className="relative" style={{ height: rowH }}>
             <span className="absolute -top-1.5 right-2 font-mono text-[10px] text-black/35">
-              {String(h).padStart(2, "0")}:00
+              {pad(h)}:00
             </span>
           </div>
         ))}
       </div>
 
-      {/* Grid + blocks */}
       <div className="relative flex-1 border-l border-black/[0.06]">
         {hours.map((h, i) => (
           <div
             key={h}
             className="absolute left-0 right-0 border-t border-black/[0.05]"
-            style={{ top: (i * 520) / (DAY_END - DAY_START) }}
+            style={{ top: i * rowH }}
           />
         ))}
 
@@ -175,19 +238,33 @@ function DayTimeline({ bookings }) {
         )}
 
         {bookings.map((b) => {
-          const start = Math.max(minsInDay(b.start), DAY_START * 60);
-          const end = Math.min(minsInDay(b.end), DAY_END * 60);
-          const top = ((start - DAY_START * 60) / TOTAL_MIN) * 520;
-          const height = Math.max(((end - start) / TOTAL_MIN) * 520, 22);
+          const isDragging = drag?.id === b.id;
+          const top = isDragging ? drag.top : topFor(b);
+          const height = heightFor(b);
+          // Live time label while dragging.
+          const previewStart = isDragging
+            ? Math.round((DAY_START * 60 + (drag.top / HEIGHT) * TOTAL_MIN) / SNAP) * SNAP
+            : minsInDay(b.start);
+          const dur = minsInDay(b.end) - minsInDay(b.start);
           return (
             <div
               key={b.id}
-              className="absolute left-1.5 right-1.5 overflow-hidden rounded-[10px] border border-black/[0.08] bg-white px-3 py-1.5"
+              onPointerDown={(e) => onPointerDown(e, b)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              className={`group absolute left-1.5 right-1.5 flex touch-none select-none items-start gap-1 overflow-hidden rounded-[10px] border px-2 py-1.5 ${
+                isDragging
+                  ? "z-10 cursor-grabbing border-black/25 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+                  : "cursor-grab border-black/[0.08] bg-white hover:border-black/20"
+              }`}
               style={{ top, height }}
             >
-              <div className="truncate text-xs text-foreground">{b.purpose}</div>
-              <div className="font-mono text-[10px] text-black/45">
-                {formatTime(b.start)}–{formatTime(b.end)}
+              <GripVertical className="mt-0.5 h-3 w-3 shrink-0 text-black/25" strokeWidth={1.5} />
+              <div className="min-w-0">
+                <div className="truncate text-xs text-foreground">{b.purpose}</div>
+                <div className="font-mono text-[10px] text-black/45">
+                  {fmtMin(previewStart)}–{fmtMin(previewStart + dur)}
+                </div>
               </div>
             </div>
           );
@@ -216,8 +293,6 @@ function NewBookingModal({ open, onClose, resource, date, bookings, setBookings,
       return;
     }
 
-    // Overlap validation against existing (non-cancelled) bookings on this
-    // resource + date. Adjacent slots (end == start) are allowed.
     const clash = bookings.find((b) => {
       if (b.assetId !== resource.id || b.status === "CANCELLED") return false;
       if (dateOf(b.start) !== date) return false;

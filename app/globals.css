@@ -26,6 +26,15 @@
   /* Radii -> rounded-control (14px small components), rounded-card (16px cards/nav) */
   --radius-control: 14px;
   --radius-card: 16px;
+
+  /* Letter-spacing. Flip the default "tracking-tight" (normally negative) to a
+     gentle positive so headings using it get extra character spacing too. */
+  --tracking-tight: 0.02em;
+}
+
+:root {
+  /* Base character spacing applied to body text. Bump to 2px for more air. */
+  --tracking-base: 1px;
 }
 
 /* --- Base layer ------------------------------------------------------- */
@@ -36,16 +45,17 @@
     font-family: var(--font-sans);
     font-size: 16px;
     line-height: 1.5;
+    letter-spacing: var(--tracking-base);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Global rule from DESIGN.md: headings are always weight 300 with tight tracking. */
+  /* Headings are always weight 300; give them a touch of positive spacing. */
   h1,
   h2,
   h3,
   h4 {
     font-weight: 300;
-    letter-spacing: -0.02em;
+    letter-spacing: var(--tracking-base);
     color: var(--color-foreground);
   }
 
