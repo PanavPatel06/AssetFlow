@@ -37,7 +37,18 @@ export default function BookingsPage() {
   const { user } = useCurrentUser();
   const resources = bookableAssets();
 
-  const [assetId, setAssetId] = useState(resources[0].id);
+  // Default to a resource that actually has bookings today, so the timeline
+  // opens with content instead of an empty grid.
+  const [assetId, setAssetId] = useState(
+    () =>
+      (
+        resources.find((r) =>
+          seedBookings.some(
+            (b) => b.assetId === r.id && dateOf(b.start) === DEFAULT_DATE
+          )
+        ) || resources[0]
+      ).id
+  );
   const [date, setDate] = useState(DEFAULT_DATE);
   const [bookings, setBookings] = useState(seedBookings);
   const [open, setOpen] = useState(false);

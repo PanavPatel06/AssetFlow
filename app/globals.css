@@ -33,8 +33,8 @@
 }
 
 :root {
-  /* Base character spacing applied to body text. */
-  --tracking-base: 0.5px;
+  /* Base character spacing applied to body text — subtle breathing room. */
+  --tracking-base: 0.7px;
 }
 
 /* --- Base layer ------------------------------------------------------- */

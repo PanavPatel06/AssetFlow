@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import {
   BarChart,
   Bar,
@@ -230,35 +231,41 @@ export default function ReportsPage() {
       <Card hover={false} className="mt-3">
         <h3 className="mb-4 text-lg font-light text-foreground">Resource Booking Heatmap</h3>
         <div className="overflow-x-auto">
-          <div className="inline-block">
-            <div className="flex">
-              <div className="w-10" />
-              {hours.map((h) => (
-                <div key={h} className="w-8 text-center font-mono text-[10px] text-black/35">
-                  {h}
-                </div>
-              ))}
-            </div>
+          {/* Responsive grid: hour columns stretch (1fr) to fill the card width. */}
+          <div
+            className="grid min-w-[560px] gap-1"
+            style={{ gridTemplateColumns: `2.75rem repeat(${hours.length}, minmax(0, 1fr))` }}
+          >
+            {/* header row: empty corner + hour labels */}
+            <div />
+            {hours.map((h) => (
+              <div key={h} className="pb-1 text-center font-mono text-[10px] text-black/35">
+                {h}
+              </div>
+            ))}
+
+            {/* one row per weekday */}
             {days.map((day, wd) => (
-              <div key={day} className="flex items-center">
-                <div className="w-10 pr-2 text-right text-xs text-black/45">{day}</div>
+              <Fragment key={day}>
+                <div className="flex items-center justify-end pr-2 text-xs text-black/45">
+                  {day}
+                </div>
                 {hours.map((h) => {
                   const v = heat[`${wd}-${h}`] || 0;
                   const intensity = v / maxHeat;
                   return (
-                    <div key={h} className="p-0.5">
-                      <div
-                        title={`${day} ${h}:00 · ${v} booking(s)`}
-                        className="h-6 w-7 rounded-[4px] border border-black/[0.04]"
-                        style={{
-                          background:
-                            v === 0 ? "rgba(0,0,0,0.03)" : `rgba(17,17,17,${0.15 + intensity * 0.75})`,
-                        }}
-                      />
-                    </div>
+                    <div
+                      key={h}
+                      title={`${day} ${h}:00 · ${v} booking(s)`}
+                      className="h-7 rounded-[4px] border border-black/[0.04]"
+                      style={{
+                        background:
+                          v === 0 ? "rgba(0,0,0,0.03)" : `rgba(17,17,17,${0.15 + intensity * 0.75})`,
+                      }}
+                    />
                   );
                 })}
-              </div>
+              </Fragment>
             ))}
           </div>
         </div>
