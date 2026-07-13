@@ -284,7 +284,7 @@ function DayTimeline({ bookings, onUpdate }) {
               onPointerDown={(e) => onPointerDown(e, b)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
-              className={`group absolute left-1.5 right-1.5 touch-none select-none overflow-hidden rounded-[10px] border px-2 py-1.5 ${
+              className={`group absolute left-1.5 right-1.5 touch-none select-none overflow-hidden rounded-[10px] border ${
                 active
                   ? "z-10 cursor-grabbing border-black/25 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
                   : "cursor-grab border-black/[0.08] bg-white hover:border-black/20"
@@ -299,8 +299,10 @@ function DayTimeline({ bookings, onUpdate }) {
                 <span className="h-0.5 w-6 rounded-full bg-black/20" />
               </span>
 
-              <div className="flex items-start gap-1">
-                <GripVertical className="mt-0.5 h-3 w-3 shrink-0 text-black/25" strokeWidth={1.5} />
+              {/* Content stays vertically centered (left-aligned) as the block
+                  is resized taller/shorter, instead of pinning to the top. */}
+              <div className="absolute inset-0 flex items-center gap-1 px-2">
+                <GripVertical className="h-3 w-3 shrink-0 text-black/25" strokeWidth={1.5} />
                 <div className="min-w-0">
                   <div className="truncate text-xs text-foreground">{b.purpose}</div>
                   <div className="font-mono text-[10px] text-black/45">
