@@ -1,7 +1,9 @@
 import { cn } from "@/lib/cn";
 
-// Dashboard stat tile: big light-weight number (IBM Plex, weight 300) + label,
-// optional icon and a small sub-note (e.g. "3 overdue").
+// Dashboard stat tile. Per DESIGN1.md's measured type table, in-UI stat
+// numbers ("agent-card stat number": Geist, 24px, weight 300, NORMAL
+// tracking) are a distinct, smaller, denser token from marketing hero
+// numbers (IBM Plex, tight negative tracking) — this is the former.
 export default function KpiCard({ label, value, icon: Icon, note, tone, href }) {
   const noteTone = {
     danger: "text-red-700",
@@ -25,7 +27,7 @@ export default function KpiCard({ label, value, icon: Icon, note, tone, href }) 
         </span>
         {Icon && <Icon className="h-4 w-4 text-black/30" strokeWidth={1.5} />}
       </div>
-      <div className="mt-3 font-display text-4xl font-light tracking-tight text-foreground">
+      <div className="mt-3 text-2xl font-light text-foreground">
         {value}
       </div>
       {note && (

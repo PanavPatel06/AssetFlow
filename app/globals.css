@@ -27,15 +27,23 @@
   --radius-control: 14px;
   --radius-card: 16px;
 
-  /* Headings use tight (negative) tracking for the premium display look. */
-  --tracking-tight: -0.02em;
+  /* Headings/numerals use tight tracking: exactly -2.5% of font-size, expressed
+     as a relative em unit so it scales correctly at every breakpoint (per
+     DESIGN1.md §3 — measured as -1.5px@60px, -2.4px@96px, i.e. a fixed ratio,
+     not fixed px values). */
+  --tracking-tight: -0.025em;
 }
 
 :root {
-  /* Body text — subtle breathing room so copy isn't congested. */
+  /* Body text — subtle breathing room so copy isn't congested (deliberate
+     deviation from the source site's "normal" body tracking, per explicit
+     request). */
   --tracking-base: 0.7px;
-  /* Headings — tight, light-weight display look (matches DESIGN.md). */
-  --tracking-heading: -0.02em;
+  /* H1/H2 display headings — tight, light-weight look. Card titles (H3/H4)
+     use normal tracking instead; DESIGN1.md's measured table shows the
+     negative tracking is only applied to Hero H1 and Section H2, never to
+     card-level H3/H4. */
+  --tracking-heading: -0.025em;
 }
 
 /* --- Base layer ------------------------------------------------------- */
@@ -50,13 +58,20 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Headings are always weight 300 with tight tracking (premium display look). */
+  /* Headings are always weight 300 (never bold). H1/H2 get tight negative
+     tracking (display/hero scale); H3/H4 (card titles) use normal tracking —
+     matches DESIGN1.md's measured typography table exactly. */
   h1,
-  h2,
+  h2 {
+    font-weight: 300;
+    letter-spacing: var(--tracking-heading);
+    color: var(--color-foreground);
+  }
+
   h3,
   h4 {
     font-weight: 300;
-    letter-spacing: var(--tracking-heading);
+    letter-spacing: normal;
     color: var(--color-foreground);
   }
 

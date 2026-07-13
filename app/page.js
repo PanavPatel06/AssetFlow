@@ -70,10 +70,13 @@ export default function LandingPage() {
             </Eyebrow>
           </div>
 
+          {/* Hero copy column is capped at 768px (max-w-3xl on the parent),
+              so this large heading wraps dramatically across lines — per
+              DESIGN1.md §4 "Hero copy block uses a narrower 768px". */}
           <BlurInHeading
             text="One place for every asset and resource."
             as="h1"
-            className="mx-auto mt-6 max-w-4xl font-display text-6xl font-light leading-[1.02] tracking-[-0.025em] text-foreground sm:text-7xl md:text-8xl"
+            className="mx-auto mt-6 font-display text-6xl font-light leading-[1.0] tracking-tight text-foreground sm:text-7xl md:text-8xl"
           />
 
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-black/50">
@@ -96,7 +99,7 @@ export default function LandingPage() {
         <div className="mx-auto mt-16 grid max-w-3xl grid-cols-2 gap-8 sm:grid-cols-4">
           {STATS.map((s) => (
             <div key={s.label} className="text-center">
-              <div className="font-display text-4xl font-light tracking-tight text-foreground">
+              <div className="font-display text-[30px] font-light tracking-tight text-foreground sm:text-4xl">
                 {s.value}
               </div>
               <div className="mt-1 text-[11px] uppercase tracking-widest text-black/40">
@@ -114,7 +117,7 @@ export default function LandingPage() {
       <Marquee />
 
       {/* -------------------------------- Platform ------------------------------- */}
-      <Section id="platform" glyph="assets" eyebrow="Platform" title="Everything asset management needs.">
+      <Section id="platform" glyph="assets" eyebrow="Platform" title="Everything asset management needs." scale="full">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f, i) => (
             <Reveal key={f.title} delay={(i % 3) * 80}>
@@ -158,7 +161,7 @@ export default function LandingPage() {
                   {s.n}
                 </div>
                 <div>
-                  <h3 className="text-lg font-light text-foreground">{s.title}</h3>
+                  <h3 className="text-2xl font-light text-foreground">{s.title}</h3>
                   <p className="mt-1 text-sm text-black/45">{s.body}</p>
                 </div>
               </Card>
@@ -174,7 +177,7 @@ export default function LandingPage() {
           <BlurInHeading
             text="Ready to digitize your asset management?"
             as="h2"
-            className="mx-auto mt-5 max-w-xl text-4xl font-light tracking-tight text-foreground sm:text-5xl"
+            className="mx-auto mt-5 text-4xl font-light leading-[1.05] tracking-tight text-foreground sm:text-5xl md:text-6xl"
           />
           <p className="mx-auto mt-4 max-w-md text-sm text-black/45">
             Set up your organization and register your first asset in minutes.
@@ -188,27 +191,38 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* --------------------------------- Footer -------------------------------- */}
-      <footer className="border-t border-black/[0.06] px-6 py-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
-          <Link href="/" className="font-logo text-xs tracking-[0.25em] text-black/70">
-            ASSETFLOW
-          </Link>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-[11px] uppercase tracking-widest text-black/45">
-            <a href="#platform" className="hover:text-foreground">Platform</a>
-            <a href="#roles" className="hover:text-foreground">Roles</a>
-            <a href="#workflow" className="hover:text-foreground">Workflow</a>
-            <Link href="/login" className="hover:text-foreground">Sign in</Link>
+      {/* --------------------------------- Footer --------------------------------
+          Flat cream bg (no card/border), logo left + link row right, a thin
+          hairline divider, then the copyright line bottom-left — per
+          DESIGN1.md §6 "Footer" exactly. */}
+      <footer className="px-6 py-12">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
+            <Link href="/" className="font-logo text-xs tracking-[0.25em] text-black/70">
+              ASSETFLOW
+            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-6 text-[11px] uppercase tracking-widest text-black/45">
+              <a href="#platform" className="hover:text-foreground">Platform</a>
+              <a href="#roles" className="hover:text-foreground">Roles</a>
+              <a href="#workflow" className="hover:text-foreground">Workflow</a>
+              <Link href="/login" className="hover:text-foreground">Sign in</Link>
+            </div>
           </div>
-          <p className="text-xs text-black/35">© 2026 AssetFlow</p>
+          <div className="mt-8 border-t border-black/[0.06] pt-6 text-left">
+            <p className="text-xs text-black/35">© 2026 AssetFlow</p>
+          </div>
         </div>
       </footer>
     </div>
   );
 }
 
-/* --------------------------- Section wrapper ------------------------------ */
-function Section({ id, glyph, eyebrow, title, description, children }) {
+/* --------------------------- Section wrapper ------------------------------
+   DESIGN1.md §3 distinguishes two H2 responsive scales: "full-scale"
+   (36→48→60px, grows through the lg breakpoint) used sparingly — on the
+   opening feature section and the final CTA — versus "capped" (36→48px,
+   stops growing at md) used everywhere else. Pass scale="full" to opt in. */
+function Section({ id, glyph, eyebrow, title, description, scale = "capped", children }) {
   return (
     <section id={id} className="scroll-mt-24 border-t border-black/[0.06] px-6 py-32">
       <div className="mx-auto max-w-6xl">
@@ -218,7 +232,9 @@ function Section({ id, glyph, eyebrow, title, description, children }) {
           <BlurInHeading
             text={title}
             as="h2"
-            className="mt-5 text-4xl font-light leading-[1.05] tracking-tight text-foreground sm:text-5xl md:text-6xl"
+            className={`mt-5 text-4xl font-light leading-[1.05] tracking-tight text-foreground sm:text-5xl ${
+              scale === "full" ? "md:text-6xl" : ""
+            }`}
           />
           {description && (
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-black/45">{description}</p>
@@ -263,7 +279,7 @@ function HeroPreview() {
               {kpis.map((k) => (
                 <div key={k.label} className="rounded-control border border-black/[0.07] bg-card p-4">
                   <div className="text-[11px] uppercase tracking-widest text-black/40">{k.label}</div>
-                  <div className={`mt-2 font-display text-3xl font-light tracking-tight ${k.danger ? "text-red-600" : "text-foreground"}`}>
+                  <div className={`mt-2 text-2xl font-light ${k.danger ? "text-red-600" : "text-foreground"}`}>
                     {k.value}
                   </div>
                 </div>

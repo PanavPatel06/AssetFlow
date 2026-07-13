@@ -4,8 +4,10 @@ Enterprise Asset & Resource Management System — track, allocate, and maintain
 physical assets and shared resources through a centralized, role-based platform.
 
 Built with **Next.js (App Router) + JavaScript + Tailwind CSS v4**, following the
-"quiet luxury" design language in [`DESIGN.md`](./DESIGN.md). The full build plan
-is in [`PLAN.md`](./PLAN.md).
+"quiet luxury" design language in `DESIGN.md` (kept locally, not tracked in this
+repo) — refined against a more precisely measured version of the same spec (exact
+letter-spacing formula, per-section heading scale, and per-context type tokens).
+The full build plan is in `PLAN.md` (also local-only).
 
 > **Status: Phase 1 (Frontend) complete.** A marketing landing page plus all 10
 > app screens are built and running on mock data. No backend/database yet — that's

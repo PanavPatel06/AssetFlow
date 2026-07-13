@@ -11,13 +11,15 @@ const LINKS = [
   { label: "Workflow", href: "#workflow" },
 ];
 
-// Fixed, floating glass pill (per DESIGN.md §6).
+// Fixed, floating glass pill — 768px max width, per DESIGN1.md §4/§6 exactly.
+// (Two CTAs instead of the source's single button is a deliberate adaptation:
+// AssetFlow needs both a sign-in and a sign-up path, not just a capture form.)
 export default function LandingNav() {
   const [open, setOpen] = useState(false);
 
   return (
     <header className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
-      <nav className="w-full max-w-4xl rounded-2xl border border-black/[0.06] bg-background/30 px-4 py-3 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.06)]">
+      <nav className="w-full max-w-3xl rounded-2xl border border-black/[0.06] bg-background/30 px-4 py-3 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="font-logo text-xs tracking-[0.25em] text-black/70">
             ASSETFLOW
