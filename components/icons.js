@@ -1,47 +1,44 @@
 // Central icon set for AssetFlow.
 //
-// We use Phosphor Icons (a refined, editorial-feeling set) instead of the very
-// common default pack, and re-export them under the friendly names the app
-// already uses — so swapping the icon library only touches this one file.
-//
-// Imported from the SSR-safe entry so the icons work in both server and client
-// components. Default weight is "regular" for a clean 1.5px-stroke look.
+// We use Iconoir — a clean, thin-line, premium icon set that suits the
+// quiet-luxury aesthetic — re-exported under the friendly names the app already
+// uses, so swapping the icon library only ever touches this one file.
 
 export {
-  Warning as AlertTriangle,
+  WarningTriangle as AlertTriangle,
   ArrowLeft,
-  ArrowsLeftRight as ArrowLeftRight,
+  DataTransferBoth as ArrowLeftRight,
   ArrowRight,
-  Prohibit as Ban,
+  Prohibition as Ban,
   Bell,
-  Stack as Boxes,
-  Buildings as Building2,
-  CalendarDots as CalendarClock,
+  Packages as Boxes,
+  Building as Building2,
+  Calendar as CalendarClock,
   Check,
-  Checks as CheckCheck,
+  DoubleCheck as CheckCheck,
   CheckCircle as CheckCircle2,
-  CaretDown as ChevronDown,
-  ClipboardText as ClipboardCheck,
-  SquaresFour as LayoutDashboard,
-  ChartBar as BarChart3,
-  DownloadSimple as Download,
-  DotsSixVertical as GripVertical,
-  Info,
+  NavArrowDown as ChevronDown,
+  ClipboardCheck,
+  ViewGrid as LayoutDashboard,
+  ReportColumns as BarChart3,
+  Download,
+  DragHandGesture as GripVertical,
+  InfoCircle as Info,
   Lock,
-  EnvelopeSimple as MailCheck,
-  List as Menu,
-  Package as PackageCheck,
-  Cube as PackageOpen,
-  Paperclip,
+  Mail as MailCheck,
+  Menu,
+  Box as PackageCheck,
+  BoxIso as PackageOpen,
+  Attachment as Paperclip,
   Plus,
-  MagnifyingGlass as Search,
-  ShieldWarning as ShieldAlert,
+  Search,
+  ShieldAlert,
   ShieldCheck,
-  TrendUp as TrendingUp,
-  ArrowUUpLeft as Undo2,
-  UploadSimple as Upload,
-  UserSwitch as UserCog,
+  GraphUp as TrendingUp,
+  Undo as Undo2,
+  Upload,
+  UserCircle as UserCog,
   Wrench,
-  X,
-  XCircle,
-} from "@phosphor-icons/react/dist/ssr";
+  Xmark as X,
+  XmarkCircle as XCircle,
+} from "iconoir-react";
