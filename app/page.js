@@ -16,6 +16,7 @@ import BlurInHeading from "@/components/motion/BlurInHeading";
 import Reveal from "@/components/motion/Reveal";
 import PixelGlyph from "@/components/motion/PixelGlyph";
 import LandingNav from "@/components/marketing/LandingNav";
+import Marquee from "@/components/marketing/Marquee";
 
 const FEATURES = [
   { icon: Boxes, title: "Asset Lifecycle", body: "Track every asset through seven states — Available, Allocated, Reserved, Under Maintenance, Lost, Retired, Disposed — with full per-asset history." },
@@ -70,9 +71,9 @@ export default function LandingPage() {
           </div>
 
           <BlurInHeading
-            text="One platform for every asset, resource, and workflow."
+            text="One place for every asset and resource."
             as="h1"
-            className="mx-auto mt-6 max-w-3xl font-display text-5xl font-light leading-[1.05] tracking-tight text-foreground sm:text-6xl md:text-7xl"
+            className="mx-auto mt-6 max-w-4xl font-display text-6xl font-light leading-[1.02] tracking-[-0.025em] text-foreground sm:text-7xl md:text-8xl"
           />
 
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-black/50">
@@ -109,12 +110,15 @@ export default function LandingPage() {
         <HeroPreview />
       </section>
 
+      {/* ------------------------------- Marquee band ---------------------------- */}
+      <Marquee />
+
       {/* -------------------------------- Platform ------------------------------- */}
       <Section id="platform" glyph="assets" eyebrow="Platform" title="Everything asset management needs.">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f, i) => (
             <Reveal key={f.title} delay={(i % 3) * 80}>
-              <Card className="h-full">
+              <Card className="h-full min-h-[200px]" padding="p-8">
                 <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-control border border-black/10 bg-white/60">
                   <f.icon className="h-5 w-5 text-foreground" strokeWidth={1.5} />
                 </div>
@@ -132,7 +136,7 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {ROLES.map((r, i) => (
             <Reveal key={r.name} delay={(i % 4) * 80}>
-              <Card className="h-full">
+              <Card className="h-full" padding="p-8">
                 <div className="mb-4 flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-black/40" strokeWidth={1.5} />
                   <h3 className="text-base font-light text-foreground">{r.name}</h3>
@@ -164,7 +168,7 @@ export default function LandingPage() {
       </Section>
 
       {/* ---------------------------------- CTA ---------------------------------- */}
-      <section className="border-t border-black/[0.06] px-6 py-28">
+      <section className="border-t border-black/[0.06] px-6 py-32">
         <div className="mx-auto max-w-2xl text-center">
           <PixelGlyph kind="dashboard" size={40} />
           <BlurInHeading
@@ -206,15 +210,15 @@ export default function LandingPage() {
 /* --------------------------- Section wrapper ------------------------------ */
 function Section({ id, glyph, eyebrow, title, description, children }) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-black/[0.06] px-6 py-24">
+    <section id={id} className="scroll-mt-24 border-t border-black/[0.06] px-6 py-32">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-14 max-w-2xl">
-          <PixelGlyph kind={glyph} size={36} />
-          <Eyebrow className="mt-3">{eyebrow}</Eyebrow>
+        <div className="mb-16 max-w-2xl">
+          <PixelGlyph kind={glyph} size={40} />
+          <Eyebrow className="mt-4">{eyebrow}</Eyebrow>
           <BlurInHeading
             text={title}
             as="h2"
-            className="mt-4 text-4xl font-light tracking-tight text-foreground sm:text-5xl"
+            className="mt-5 text-4xl font-light leading-[1.05] tracking-tight text-foreground sm:text-5xl md:text-6xl"
           />
           {description && (
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-black/45">{description}</p>
