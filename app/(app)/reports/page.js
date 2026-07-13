@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -18,21 +18,9 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/ui/StatusPill";
 import EmptyState from "@/components/ui/EmptyState";
-import { cn } from "@/lib/cn";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  assets,
-  categories,
-  departments,
-  allocations,
-  bookings,
-  maintenance,
-  getEmployee,
-  getAsset,
-  categoryName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { ASSET_STATUS, ASSET_STATUS_ORDER } from "@/lib/statuses";
-import { formatDate } from "@/lib/format";
 import { can } from "@/lib/roles";
 
 const TONE_HEX = {
@@ -45,8 +33,36 @@ const TONE_HEX = {
 
 export default function ReportsPage() {
   const { user } = useCurrentUser();
+  const [data, setData] = useState(null);
 
-  if (!can(user.role, "viewReports")) {
+  const canView = user && can(user.role, "viewReports");
+
+  useEffect(() => {
+    if (!canView) return;
+    Promise.all([
+      apiFetch("/api/assets"),
+      apiFetch("/api/categories"),
+      apiFetch("/api/departments"),
+      apiFetch("/api/allocations"),
+      apiFetch("/api/bookings"),
+      apiFetch("/api/maintenance"),
+      apiFetch("/api/employees"),
+    ]).then(([assets, categories, departments, allocations, bookings, maintenance, employees]) => {
+      setData({
+        assets: assets.assets,
+        categories: categories.categories,
+        departments: departments.departments,
+        allocations: allocations.allocations,
+        bookings: bookings.bookings,
+        maintenance: maintenance.requests,
+        employees: employees.employees,
+      });
+    });
+  }, [canView]);
+
+  if (!user) return null;
+
+  if (!canView) {
     return (
       <div>
         <PageHeader eyebrow="Reports" title="Reports & Analytics" />
@@ -58,6 +74,10 @@ export default function ReportsPage() {
       </div>
     );
   }
+
+  if (!data) return null;
+
+  const { assets, categories, departments, allocations, bookings, maintenance, employees } = data;
 
   // --- Assets by status ---
   const statusData = ASSET_STATUS_ORDER.map((s) => ({
@@ -76,7 +96,7 @@ export default function ReportsPage() {
   const maintData = categories
     .map((c) => ({
       name: c.name,
-      value: maintenance.filter((m) => getAsset(m.assetId)?.categoryId === c.id).length,
+      value: maintenance.filter((m) => assets.find((a) => a.id === m.assetId)?.categoryId === c.id).length,
     }))
     .filter((d) => d.value > 0);
 
@@ -84,7 +104,10 @@ export default function ReportsPage() {
   const deptData = departments.map((d) => {
     const value = allocations.filter((al) => {
       if (al.status !== "ACTIVE") return false;
-      const dept = al.holderType === "EMPLOYEE" ? getEmployee(al.holderId)?.departmentId : al.holderId;
+      const dept =
+        al.holderType === "EMPLOYEE"
+          ? employees.find((e) => e.id === al.holderUserId)?.departmentId
+          : al.holderDepartmentId;
       return dept === d.id;
     }).length;
     return { name: d.name, value };
@@ -129,10 +152,10 @@ export default function ReportsPage() {
     const rows = [
       ["Tag", "Name", "Category", "Status", "Condition", "Location", "Cost"],
       ...assets.map((a) => [
-        a.tag, a.name, categoryName(a.categoryId), a.status, a.condition, a.location, a.acquisitionCost,
+        a.tag, a.name, a.category?.name, a.status, a.condition, a.location, a.acquisitionCost,
       ]),
     ];
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const csv = rows.map((r) => r.map((c) => `"${c ?? ""}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;

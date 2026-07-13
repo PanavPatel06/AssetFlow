@@ -1,23 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Upload } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { assets, categories, getCategory } from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 
 export default function NewAssetPage() {
   const router = useRouter();
-
-  // Auto-generate the next asset tag (AF-0001 style).
-  const nextTag = `AF-${String(assets.length + 1).padStart(4, "0")}`;
+  const [categories, setCategories] = useState([]);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
-    categoryId: categories[0].id,
+    categoryId: "",
     serial: "",
     acquisitionDate: "",
     acquisitionCost: "",
@@ -29,12 +29,39 @@ export default function NewAssetPage() {
   const update = (k) => (e) =>
     setForm({ ...form, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
-  const selectedCategory = getCategory(form.categoryId);
+  useEffect(() => {
+    apiFetch("/api/categories").then(({ categories }) => {
+      setCategories(categories);
+      setForm((f) => ({ ...f, categoryId: categories[0]?.id || "" }));
+    });
+  }, []);
 
-  function submit(e) {
+  const selectedCategory = categories.find((c) => c.id === form.categoryId);
+
+  async function submit(e) {
     e.preventDefault();
-    // Phase 1: no persistence — confirm and return to the directory.
-    router.push("/assets");
+    setError("");
+    setSubmitting(true);
+    try {
+      await apiFetch("/api/assets", {
+        method: "POST",
+        body: {
+          name: form.name,
+          categoryId: form.categoryId,
+          serial: form.serial || undefined,
+          acquisitionDate: form.acquisitionDate || undefined,
+          acquisitionCost: form.acquisitionCost ? Number(form.acquisitionCost) : undefined,
+          condition: form.condition,
+          location: form.location || undefined,
+          isBookable: form.isBookable,
+        },
+      });
+      router.push("/assets");
+      router.refresh();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -48,6 +75,12 @@ export default function NewAssetPage() {
         title="Register Asset"
         description="Add a new asset to the system. It enters as Available once registered."
       />
+
+      {error && (
+        <div className="mb-4 rounded-control border border-red-600/15 bg-red-500/10 px-3.5 py-3 text-xs text-red-700">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={submit} className="grid gap-3 lg:grid-cols-3">
         <Card hover={false} className="lg:col-span-2">
@@ -83,7 +116,7 @@ export default function NewAssetPage() {
               <Input value={form.location} onChange={update("location")} placeholder="e.g. HQ · Floor 3" />
             </Field>
 
-            {/* Category-specific custom fields */}
+            {/* Category-specific custom fields (display only — not yet sent to the API) */}
             {selectedCategory?.customFields?.length > 0 &&
               selectedCategory.customFields.map((f) => (
                 <Field key={f} label={f}>
@@ -107,8 +140,8 @@ export default function NewAssetPage() {
         {/* Side column: tag preview + upload + submit */}
         <div className="space-y-3">
           <Card hover={false}>
-            <div className="text-[11px] uppercase tracking-widest text-black/40">Auto-generated Tag</div>
-            <div className="mt-2 font-mono text-2xl font-light text-foreground">{nextTag}</div>
+            <div className="text-[11px] uppercase tracking-widest text-black/40">Asset Tag</div>
+            <div className="mt-2 font-mono text-2xl font-light text-foreground">AF-####</div>
             <p className="mt-2 text-xs text-black/45">Assigned automatically on registration.</p>
           </Card>
 
@@ -120,7 +153,9 @@ export default function NewAssetPage() {
             </div>
           </Card>
 
-          <Button type="submit" variant="filled" size="block">Register Asset</Button>
+          <Button type="submit" variant="filled" size="block" disabled={submitting}>
+            {submitting ? "Registering…" : "Register Asset"}
+          </Button>
         </div>
       </form>
     </div>

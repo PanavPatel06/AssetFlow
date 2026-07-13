@@ -1,4 +1,6 @@
 import { Geist, Geist_Mono, IBM_Plex_Sans, Courier_Prime } from "next/font/google";
+import { SessionProvider } from "next-auth/react";
+import { auth } from "@/lib/auth";
 import "./globals.css";
 
 // UI sans (body, most headings)
@@ -33,13 +35,17 @@ export const metadata = {
     "Enterprise Asset & Resource Management System — track, allocate, and maintain assets and shared resources.",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const session = await auth();
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${ibmPlexSans.variable} ${courierPrime.variable} h-full scroll-smooth antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <SessionProvider session={session}>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

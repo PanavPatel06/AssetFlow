@@ -11,7 +11,9 @@ import { ROLE_LABELS } from "@/lib/roles";
 export default function Sidebar({ mobileOpen, onClose }) {
   const pathname = usePathname();
   const { user } = useCurrentUser();
-  const items = navForRole(user.role);
+  const items = navForRole(user?.role);
+
+  if (!user) return null;
 
   const content = (
     <div className="flex h-full flex-col">

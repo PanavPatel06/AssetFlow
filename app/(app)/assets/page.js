@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Plus, Search, Boxes } from "@/components/icons";
@@ -11,24 +11,41 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import { Input, Select } from "@/components/ui/Field";
 import { useCurrentUser } from "@/lib/currentUser";
-import { assets, categories, categoryName, holderName } from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { ASSET_STATUS, ASSET_STATUS_ORDER } from "@/lib/statuses";
 import { can } from "@/lib/roles";
+
+function holderName(asset) {
+  return asset.currentHolderUser?.name || asset.currentHolderDepartment?.name || null;
+}
 
 function AssetsInner() {
   const params = useSearchParams();
   const { user } = useCurrentUser();
+  const [assets, setAssets] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState(params.get("status") || "");
 
-  const filtered = assets.filter((a) => {
-    const text = `${a.tag} ${a.name} ${a.serial} ${a.location}`.toLowerCase();
-    if (q && !text.includes(q.toLowerCase())) return false;
-    if (category && a.categoryId !== category) return false;
-    if (status && a.status !== status) return false;
-    return true;
-  });
+  useEffect(() => {
+    apiFetch("/api/categories").then(({ categories }) => setCategories(categories));
+  }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
+    if (category) query.set("categoryId", category);
+    if (status) query.set("status", status);
+    setLoading(true);
+    apiFetch(`/api/assets?${query.toString()}`).then(({ assets }) => {
+      setAssets(assets);
+      setLoading(false);
+    });
+  }, [q, category, status]);
+
+  if (!user) return null;
 
   return (
     <div>
@@ -70,11 +87,13 @@ function AssetsInner() {
         </Select>
       </div>
 
-      <div className="mb-2 text-xs text-black/40">
-        {filtered.length} of {assets.length} assets
-      </div>
+      {!loading && (
+        <div className="mb-2 text-xs text-black/40">
+          {assets.length} asset{assets.length === 1 ? "" : "s"}
+        </div>
+      )}
 
-      {filtered.length === 0 ? (
+      {loading ? null : assets.length === 0 ? (
         <EmptyState icon={Boxes} title="No assets match" description="Try clearing your search or filters." />
       ) : (
         <Table>
@@ -89,7 +108,7 @@ function AssetsInner() {
             </Tr>
           </THead>
           <TBody>
-            {filtered.map((a) => (
+            {assets.map((a) => (
               <Tr key={a.id} className="cursor-pointer hover:bg-black/[0.02]">
                 <Td className="font-mono text-xs text-black/55">
                   <Link href={`/assets/${a.id}`} className="block">{a.tag}</Link>
@@ -102,11 +121,9 @@ function AssetsInner() {
                     <span className="text-[11px] uppercase tracking-widest text-black/35">Bookable</span>
                   )}
                 </Td>
-                <Td className="text-black/60">{categoryName(a.categoryId)}</Td>
+                <Td className="text-black/60">{a.category?.name}</Td>
                 <Td><StatusPill map={ASSET_STATUS} value={a.status} /></Td>
-                <Td className="text-black/60">
-                  {a.holderType ? holderName(a.holderType, a.holderId) : "—"}
-                </Td>
+                <Td className="text-black/60">{holderName(a) || "—"}</Td>
                 <Td className="text-black/60">{a.location}</Td>
               </Tr>
             ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowLeftRight, Wrench } from "@/components/icons";
 import Card from "@/components/ui/Card";
@@ -9,16 +9,13 @@ import StatusPill from "@/components/ui/StatusPill";
 import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import Eyebrow from "@/components/ui/Eyebrow";
-import {
-  getAsset,
-  categoryName,
-  holderName,
-  allocationsForAsset,
-  maintenanceForAsset,
-  employeeName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { ASSET_STATUS, MAINTENANCE_STATUS } from "@/lib/statuses";
 import { formatDate, formatCurrency } from "@/lib/format";
+
+function holderName(holderUser, holderDepartment) {
+  return holderUser?.name || holderDepartment?.name || null;
+}
 
 function InfoRow({ label, children }) {
   return (
@@ -32,9 +29,18 @@ function InfoRow({ label, children }) {
 export default function AssetDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const asset = getAsset(id);
+  const [asset, setAsset] = useState(undefined); // undefined = loading, null = not found
+  const [error, setError] = useState(false);
 
-  if (!asset) {
+  useEffect(() => {
+    apiFetch(`/api/assets/${id}`)
+      .then(({ asset }) => setAsset(asset))
+      .catch(() => setError(true));
+  }, [id]);
+
+  if (asset === undefined && !error) return null;
+
+  if (!asset || error) {
     return (
       <div>
         <Button href="/assets" className="mb-4">
@@ -45,12 +51,8 @@ export default function AssetDetailPage() {
     );
   }
 
-  const history = allocationsForAsset(asset.id).sort(
-    (a, b) => new Date(b.allocatedOn) - new Date(a.allocatedOn)
-  );
-  const maint = maintenanceForAsset(asset.id).sort(
-    (a, b) => new Date(b.raisedOn) - new Date(a.raisedOn)
-  );
+  const history = asset.allocations || [];
+  const maint = asset.maintenance || [];
 
   return (
     <div>
@@ -67,7 +69,7 @@ export default function AssetDetailPage() {
           </h1>
           <div className="mt-3 flex items-center gap-2">
             <StatusPill map={ASSET_STATUS} value={asset.status} />
-            <span className="text-sm text-black/45">{categoryName(asset.categoryId)}</span>
+            <span className="text-sm text-black/45">{asset.category?.name}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -88,11 +90,11 @@ export default function AssetDetailPage() {
             <InfoRow label="Serial Number">
               <span className="font-mono text-xs">{asset.serial}</span>
             </InfoRow>
-            <InfoRow label="Category">{categoryName(asset.categoryId)}</InfoRow>
+            <InfoRow label="Category">{asset.category?.name}</InfoRow>
             <InfoRow label="Condition">{asset.condition}</InfoRow>
             <InfoRow label="Location">{asset.location}</InfoRow>
             <InfoRow label="Current Holder">
-              {asset.holderType ? holderName(asset.holderType, asset.holderId) : "Unassigned"}
+              {holderName(asset.currentHolderUser, asset.currentHolderDepartment) || "Unassigned"}
             </InfoRow>
             <InfoRow label="Acquisition Date">{formatDate(asset.acquisitionDate)}</InfoRow>
             <InfoRow label="Acquisition Cost">{formatCurrency(asset.acquisitionCost)}</InfoRow>
@@ -119,7 +121,7 @@ export default function AssetDetailPage() {
                 <TBody>
                   {history.map((al) => (
                     <Tr key={al.id}>
-                      <Td className="text-foreground">{holderName(al.holderType, al.holderId)}</Td>
+                      <Td className="text-foreground">{holderName(al.holderUser, al.holderDepartment)}</Td>
                       <Td className="text-black/55">{formatDate(al.allocatedOn)}</Td>
                       <Td className="text-black/55">{al.returnedOn ? formatDate(al.returnedOn) : "—"}</Td>
                       <Td>
@@ -153,7 +155,7 @@ export default function AssetDetailPage() {
                   {maint.map((m) => (
                     <Tr key={m.id}>
                       <Td className="max-w-xs truncate text-foreground">{m.issue}</Td>
-                      <Td className="text-black/55">{employeeName(m.raisedById)}</Td>
+                      <Td className="text-black/55">{m.raisedBy?.name}</Td>
                       <Td className="text-black/55">{formatDate(m.raisedOn)}</Td>
                       <Td><StatusPill map={MAINTENANCE_STATUS} value={m.status} /></Td>
                     </Tr>

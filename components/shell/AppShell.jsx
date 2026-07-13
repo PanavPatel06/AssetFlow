@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { CurrentUserProvider } from "@/lib/currentUser";
+import { NotificationsProvider } from "@/lib/notifications";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
-// Wraps every authenticated screen: provides the (mock) current user, and lays
-// out the sidebar + top bar + scrollable content area.
+// Wraps every authenticated screen: lays out the sidebar + top bar + a
+// scrollable content area. The current user comes from the real Auth.js
+// session (lib/currentUser.js), provided app-wide by <SessionProvider> in
+// app/layout.js.
 export default function AppShell({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <CurrentUserProvider>
+    <NotificationsProvider>
       <div className="flex min-h-screen">
         <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -21,6 +23,6 @@ export default function AppShell({ children }) {
           </main>
         </div>
       </div>
-    </CurrentUserProvider>
+    </NotificationsProvider>
   );
 }

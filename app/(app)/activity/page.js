@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftRight,
   AlertTriangle,
@@ -19,7 +19,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import { cn } from "@/lib/cn";
 import { useCurrentUser } from "@/lib/currentUser";
-import { notifications as seedNotifications, activityLog, employeeName } from "@/lib/mockData";
+import { useNotifications } from "@/lib/notifications";
+import { apiFetch } from "@/lib/apiClient";
 import { formatDateTime, timeAgo } from "@/lib/format";
 
 const TABS = [
@@ -39,28 +40,17 @@ const TYPE_META = {
 
 export default function ActivityPage() {
   const { user } = useCurrentUser();
+  const { notifications, unreadCount, markAllRead, markOne } = useNotifications();
   const [tab, setTab] = useState("notifications");
-  const [notifications, setNotifications] = useState(seedNotifications);
+  const [log, setLog] = useState([]);
 
-  const mine = notifications
-    .filter((n) => n.userId === user.id)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const unread = mine.filter((n) => !n.read).length;
+  useEffect(() => {
+    apiFetch("/api/activity").then(({ log }) => setLog(log));
+  }, []);
 
-  function markAllRead() {
-    setNotifications((list) =>
-      list.map((n) => (n.userId === user.id ? { ...n, read: true } : n))
-    );
-  }
-  function toggleRead(id) {
-    setNotifications((list) =>
-      list.map((n) => (n.id === id ? { ...n, read: !n.read } : n))
-    );
-  }
+  if (!user) return null;
 
-  const log = [...activityLog].sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-  );
+  const mine = [...notifications].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return (
     <div>
@@ -69,7 +59,7 @@ export default function ActivityPage() {
         title="Activity & Alerts"
         description="Stay informed without digging — your notifications, plus a full audit log of who did what and when."
         actions={
-          tab === "notifications" && unread > 0 ? (
+          tab === "notifications" && unreadCount > 0 ? (
             <Button onClick={markAllRead}>
               <CheckCheck className="h-3.5 w-3.5" strokeWidth={1.5} /> Mark all read
             </Button>
@@ -108,7 +98,7 @@ export default function ActivityPage() {
                   <div className="flex shrink-0 items-center gap-2">
                     {!n.read && <span className="h-2 w-2 rounded-full bg-primary" />}
                     <button
-                      onClick={() => toggleRead(n.id)}
+                      onClick={() => markOne(n.id, !n.read)}
                       className="text-xs text-black/40 transition-colors hover:text-foreground"
                     >
                       {n.read ? "Mark unread" : "Mark read"}
@@ -133,7 +123,7 @@ export default function ActivityPage() {
           <TBody>
             {log.map((l) => (
               <Tr key={l.id} className="hover:bg-black/[0.02]">
-                <Td className="text-foreground">{employeeName(l.actorId)}</Td>
+                <Td className="text-foreground">{l.actor?.name}</Td>
                 <Td className="text-black/60">{l.action}</Td>
                 <Td>
                   <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] uppercase tracking-widest text-black/50">

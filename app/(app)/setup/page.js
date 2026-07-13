@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, ShieldAlert, Building2 } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
@@ -12,13 +12,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  departments as seedDepartments,
-  categories as seedCategories,
-  employees as seedEmployees,
-  departmentName,
-  employeeName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { ROLES, ROLE_LABELS, can } from "@/lib/roles";
 
 const TABS = [
@@ -27,28 +21,60 @@ const TABS = [
   { id: "employees", label: "Employee Directory" },
 ];
 
+function ErrorBanner({ error }) {
+  if (!error) return null;
+  return (
+    <div className="mb-4 rounded-control border border-red-600/15 bg-red-500/10 px-3.5 py-3 text-xs text-red-700">
+      {error}
+    </div>
+  );
+}
+
 export default function SetupPage() {
   const { user } = useCurrentUser();
   const [tab, setTab] = useState("departments");
+  const [loading, setLoading] = useState(true);
 
-  // Local working copies so the demo feels live.
-  const [departments, setDepartments] = useState(seedDepartments);
-  const [categories, setCategories] = useState(seedCategories);
-  const [employees, setEmployees] = useState(seedEmployees);
+  const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [employees, setEmployees] = useState([]);
+
+  const canSetup = user && can(user.role, "orgSetup");
+
+  useEffect(() => {
+    if (!canSetup) {
+      setLoading(false);
+      return;
+    }
+    Promise.all([
+      apiFetch("/api/departments"),
+      apiFetch("/api/categories"),
+      apiFetch("/api/employees"),
+    ]).then(([d, c, e]) => {
+      setDepartments(d.departments);
+      setCategories(c.categories);
+      setEmployees(e.employees);
+      setLoading(false);
+    });
+  }, [canSetup]);
+
+  if (!user) return null;
 
   // Admin-only screen.
-  if (!can(user.role, "orgSetup")) {
+  if (!canSetup) {
     return (
       <div>
         <PageHeader eyebrow="Organization" title="Organization Setup" />
         <EmptyState
           icon={ShieldAlert}
           title="Admins only"
-          description="Organization setup — departments, categories, and role assignment — is restricted to the Admin role. Switch to an Admin (demo switcher, top-right) to manage it."
+          description="Organization setup — departments, categories, and role assignment — is restricted to the Admin role."
         />
       </div>
     );
   }
+
+  if (loading) return null;
 
   return (
     <div>
@@ -84,31 +110,41 @@ export default function SetupPage() {
 /* ------------------------------- Departments ------------------------------- */
 function DepartmentsTab({ departments, setDepartments, employees }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", headId: "", parentId: "", status: "ACTIVE" });
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  function toggleStatus(id) {
-    setDepartments((list) =>
-      list.map((d) =>
-        d.id === id ? { ...d, status: d.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" } : d
-      )
-    );
+  const employeeName = (id) => employees.find((e) => e.id === id)?.name || "—";
+  const departmentName = (id) => departments.find((d) => d.id === id)?.name || "—";
+
+  async function toggleStatus(dept) {
+    const status = dept.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    const { department } = await apiFetch(`/api/departments/${dept.id}`, {
+      method: "PATCH",
+      body: { status },
+    });
+    setDepartments((list) => list.map((d) => (d.id === department.id ? { ...d, ...department } : d)));
   }
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
-    setDepartments((list) => [
-      ...list,
-      {
-        id: `d${list.length + 1}-${Date.now()}`,
-        name: form.name,
-        headId: form.headId || null,
-        parentId: form.parentId || null,
-        status: form.status,
-      },
-    ]);
-    setForm({ name: "", headId: "", parentId: "", status: "ACTIVE" });
-    setOpen(false);
+    setError("");
+    try {
+      const { department } = await apiFetch("/api/departments", {
+        method: "POST",
+        body: {
+          name: form.name,
+          headId: form.headId || null,
+          parentId: form.parentId || null,
+          status: form.status,
+        },
+      });
+      setDepartments((list) => [...list, department]);
+      setForm({ name: "", headId: "", parentId: "", status: "ACTIVE" });
+      setOpen(false);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -142,7 +178,7 @@ function DepartmentsTab({ departments, setDepartments, employees }) {
                 />
               </Td>
               <Td className="text-right">
-                <Button size="sm" onClick={() => toggleStatus(d.id)}>
+                <Button size="sm" onClick={() => toggleStatus(d)}>
                   {d.status === "ACTIVE" ? "Deactivate" : "Activate"}
                 </Button>
               </Td>
@@ -166,6 +202,7 @@ function DepartmentsTab({ departments, setDepartments, employees }) {
         }
       >
         <form id="dept-form" onSubmit={submit} className="space-y-4">
+          <ErrorBanner error={error} />
           <Field label="Name">
             <Input value={form.name} onChange={update("name")} placeholder="e.g. Marketing" required />
           </Field>
@@ -200,21 +237,28 @@ function DepartmentsTab({ departments, setDepartments, employees }) {
 /* ------------------------------- Categories -------------------------------- */
 function CategoriesTab({ categories, setCategories }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", fields: "" });
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
+    setError("");
     const customFields = form.fields
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    setCategories((list) => [
-      ...list,
-      { id: `c${list.length + 1}-${Date.now()}`, name: form.name, customFields, count: 0 },
-    ]);
-    setForm({ name: "", fields: "" });
-    setOpen(false);
+    try {
+      const { category } = await apiFetch("/api/categories", {
+        method: "POST",
+        body: { name: form.name, customFields },
+      });
+      setCategories((list) => [...list, { ...category, count: 0 }]);
+      setForm({ name: "", fields: "" });
+      setOpen(false);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -268,6 +312,7 @@ function CategoriesTab({ categories, setCategories }) {
         }
       >
         <form id="cat-form" onSubmit={submit} className="space-y-4">
+          <ErrorBanner error={error} />
           <Field label="Name">
             <Input value={form.name} onChange={update("name")} placeholder="e.g. Electronics" required />
           </Field>
@@ -285,15 +330,22 @@ function CategoriesTab({ categories, setCategories }) {
 
 /* ------------------------------- Employees --------------------------------- */
 function EmployeesTab({ employees, setEmployees, departments }) {
-  function changeRole(id, role) {
-    setEmployees((list) => list.map((e) => (e.id === id ? { ...e, role } : e)));
+  const departmentName = (id) => departments.find((d) => d.id === id)?.name || "—";
+
+  async function changeRole(id, role) {
+    const { employee } = await apiFetch(`/api/employees/${id}`, {
+      method: "PATCH",
+      body: { role },
+    });
+    setEmployees((list) => list.map((e) => (e.id === id ? { ...e, ...employee } : e)));
   }
-  function toggleStatus(id) {
-    setEmployees((list) =>
-      list.map((e) =>
-        e.id === id ? { ...e, status: e.status === "ACTIVE" ? "INACTIVE" : "ACTIVE" } : e
-      )
-    );
+  async function toggleStatus(emp) {
+    const status = emp.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    const { employee } = await apiFetch(`/api/employees/${emp.id}`, {
+      method: "PATCH",
+      body: { status },
+    });
+    setEmployees((list) => list.map((e) => (e.id === employee.id ? { ...e, ...employee } : e)));
   }
 
   return (
@@ -341,7 +393,7 @@ function EmployeesTab({ employees, setEmployees, departments }) {
                 />
               </Td>
               <Td className="text-right">
-                <Button size="sm" onClick={() => toggleStatus(e.id)}>
+                <Button size="sm" onClick={() => toggleStatus(e)}>
                   {e.status === "ACTIVE" ? "Deactivate" : "Activate"}
                 </Button>
               </Td>

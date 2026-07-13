@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Plus,
   ClipboardCheck,
@@ -20,31 +20,60 @@ import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  assets,
-  employees,
-  departments,
-  auditCycles as seedCycles,
-  auditItems as seedItems,
-  getAsset,
-  employeeName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { AUDIT_ITEM_STATUS, AUDIT_CYCLE_STATUS } from "@/lib/statuses";
-import { formatDate, NOW } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { can } from "@/lib/roles";
-
-const today = NOW.toISOString().slice(0, 10);
 
 export default function AuditsPage() {
   const { user } = useCurrentUser();
-  const [cycles, setCycles] = useState(seedCycles);
-  const [items, setItems] = useState(seedItems);
-  const [selectedId, setSelectedId] = useState(seedCycles[0]?.id || null);
+  const [cycles, setCycles] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [selected, setSelected] = useState(null); // full cycle detail incl. items
+  const [assets, setAssets] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
-  const canRun = can(user.role, "runAudit");
-  const selected = cycles.find((c) => c.id === selectedId);
-  const selectedItems = items.filter((i) => i.cycleId === selectedId);
+  const canRun = user && can(user.role, "runAudit");
+
+  async function loadCycles() {
+    const { cycles } = await apiFetch("/api/audits");
+    setCycles(cycles);
+    return cycles;
+  }
+
+  async function loadSelected(id) {
+    if (!id) {
+      setSelected(null);
+      return;
+    }
+    const { cycle } = await apiFetch(`/api/audits/${id}`);
+    setSelected(cycle);
+  }
+
+  useEffect(() => {
+    if (!canRun) {
+      setLoading(false);
+      return;
+    }
+    Promise.all([loadCycles(), apiFetch("/api/assets"), apiFetch("/api/employees")]).then(
+      ([cycles, a, e]) => {
+        setAssets(a.assets);
+        setEmployees(e.employees);
+        if (cycles[0]) setSelectedId(cycles[0].id);
+        setLoading(false);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canRun]);
+
+  useEffect(() => {
+    loadSelected(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  if (!user) return null;
 
   if (!canRun) {
     return (
@@ -53,20 +82,26 @@ export default function AuditsPage() {
         <EmptyState
           icon={ShieldAlert}
           title="Managers only"
-          description="Audit cycles are run by Asset Managers and Admins. Switch role (top-right) to manage them."
+          description="Audit cycles are run by Asset Managers and Admins."
         />
       </div>
     );
   }
 
-  function markItem(itemId, status) {
-    setItems((list) => list.map((i) => (i.id === itemId ? { ...i, status } : i)));
+  if (loading) return null;
+
+  async function markItem(itemId, status) {
+    await apiFetch(`/api/audits/${selectedId}/items/${itemId}`, {
+      method: "PATCH",
+      body: { status },
+    });
+    loadSelected(selectedId);
   }
 
-  function closeCycle(cycleId) {
-    setCycles((list) =>
-      list.map((c) => (c.id === cycleId ? { ...c, status: "CLOSED" } : c))
-    );
+  async function closeCycle(cycleId) {
+    await apiFetch(`/api/audits/${cycleId}/close`, { method: "POST" });
+    loadCycles();
+    loadSelected(cycleId);
   }
 
   return (
@@ -85,31 +120,33 @@ export default function AuditsPage() {
       <div className="grid gap-3 lg:grid-cols-3">
         {/* Cycle list */}
         <div className="space-y-2">
-          {cycles.map((c) => {
-            const ci = items.filter((i) => i.cycleId === c.id);
-            const verified = ci.filter((i) => i.status !== "PENDING").length;
-            return (
-              <button
-                key={c.id}
-                onClick={() => setSelectedId(c.id)}
-                className={cn(
-                  "w-full rounded-card border p-4 text-left transition-all duration-200",
-                  c.id === selectedId
-                    ? "border-black/20 bg-card"
-                    : "border-black/[0.07] bg-card/60 hover:border-black/15"
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-foreground">{c.name}</span>
-                  <StatusPill map={AUDIT_CYCLE_STATUS} value={c.status} />
-                </div>
-                <div className="mt-1 text-xs text-black/45">{c.scopeLabel}</div>
-                <div className="mt-2 text-xs text-black/40">
-                  {verified}/{ci.length} checked · {formatDate(c.startDate)}
-                </div>
-              </button>
-            );
-          })}
+          {cycles.length === 0 ? (
+            <EmptyState icon={ClipboardCheck} title="No audit cycles yet" />
+          ) : (
+            cycles.map((c) => {
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedId(c.id)}
+                  className={cn(
+                    "w-full rounded-card border p-4 text-left transition-all duration-200",
+                    c.id === selectedId
+                      ? "border-black/20 bg-card"
+                      : "border-black/[0.07] bg-card/60 hover:border-black/15"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-foreground">{c.name}</span>
+                    <StatusPill map={AUDIT_CYCLE_STATUS} value={c.status} />
+                  </div>
+                  <div className="mt-1 text-xs text-black/45">{c.scopeLabel}</div>
+                  <div className="mt-2 text-xs text-black/40">
+                    {c.itemCount} asset{c.itemCount === 1 ? "" : "s"} in scope · {formatDate(c.startDate)}
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
 
         {/* Cycle detail */}
@@ -117,7 +154,7 @@ export default function AuditsPage() {
           {selected ? (
             <CycleDetail
               cycle={selected}
-              items={selectedItems}
+              items={selected.items}
               onMark={markItem}
               onClose={() => closeCycle(selected.id)}
             />
@@ -130,9 +167,12 @@ export default function AuditsPage() {
       <NewCycleModal
         open={open}
         onClose={() => setOpen(false)}
-        setCycles={setCycles}
-        setItems={setItems}
-        onCreated={setSelectedId}
+        assets={assets}
+        employees={employees}
+        onCreated={async (id) => {
+          await loadCycles();
+          setSelectedId(id);
+        }}
       />
     </div>
   );
@@ -155,9 +195,9 @@ function CycleDetail({ cycle, items, onMark, onClose }) {
               {formatDate(cycle.startDate)} – {formatDate(cycle.endDate)}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {cycle.auditorIds.map((id) => (
-                <span key={id} className="rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs text-black/55">
-                  {employeeName(id)}
+              {cycle.auditors.map((a) => (
+                <span key={a.id} className="rounded-full bg-black/[0.04] px-2.5 py-0.5 text-xs text-black/55">
+                  {a.name}
                 </span>
               ))}
             </div>
@@ -182,17 +222,14 @@ function CycleDetail({ cycle, items, onMark, onClose }) {
             <span className="text-xs text-black/45">({discrepancies.length} flagged)</span>
           </div>
           <ul className="space-y-1.5 text-sm">
-            {discrepancies.map((i) => {
-              const asset = getAsset(i.assetId);
-              return (
-                <li key={i.id} className="flex items-center justify-between gap-3">
-                  <span className="text-foreground">
-                    {asset.name} <span className="font-mono text-xs text-black/45">{asset.tag}</span>
-                  </span>
-                  <StatusPill map={AUDIT_ITEM_STATUS} value={i.status} />
-                </li>
-              );
-            })}
+            {discrepancies.map((i) => (
+              <li key={i.id} className="flex items-center justify-between gap-3">
+                <span className="text-foreground">
+                  {i.asset.name} <span className="font-mono text-xs text-black/45">{i.asset.tag}</span>
+                </span>
+                <StatusPill map={AUDIT_ITEM_STATUS} value={i.status} />
+              </li>
+            ))}
           </ul>
           {!isOpen && (
             <p className="mt-3 text-xs text-black/50">
@@ -212,35 +249,32 @@ function CycleDetail({ cycle, items, onMark, onClose }) {
           </Tr>
         </THead>
         <TBody>
-          {items.map((i) => {
-            const asset = getAsset(i.assetId);
-            return (
-              <Tr key={i.id}>
-                <Td>
-                  <span className="text-foreground">{asset.name}</span>
-                  <div className="font-mono text-xs text-black/45">{asset.tag}</div>
-                </Td>
-                <Td><StatusPill map={AUDIT_ITEM_STATUS} value={i.status} /></Td>
-                <Td className="text-right">
-                  {isOpen ? (
-                    <span className="inline-flex gap-1">
-                      <IconMark title="Verified" active={i.status === "VERIFIED"} tone="text-emerald-600" onClick={() => onMark(i.id, "VERIFIED")}>
-                        <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} />
-                      </IconMark>
-                      <IconMark title="Damaged" active={i.status === "DAMAGED"} tone="text-amber-600" onClick={() => onMark(i.id, "DAMAGED")}>
-                        <AlertTriangle className="h-4 w-4" strokeWidth={1.5} />
-                      </IconMark>
-                      <IconMark title="Missing" active={i.status === "MISSING"} tone="text-red-600" onClick={() => onMark(i.id, "MISSING")}>
-                        <XCircle className="h-4 w-4" strokeWidth={1.5} />
-                      </IconMark>
-                    </span>
-                  ) : (
-                    <span className="text-xs text-black/35">Locked</span>
-                  )}
-                </Td>
-              </Tr>
-            );
-          })}
+          {items.map((i) => (
+            <Tr key={i.id}>
+              <Td>
+                <span className="text-foreground">{i.asset.name}</span>
+                <div className="font-mono text-xs text-black/45">{i.asset.tag}</div>
+              </Td>
+              <Td><StatusPill map={AUDIT_ITEM_STATUS} value={i.status} /></Td>
+              <Td className="text-right">
+                {isOpen ? (
+                  <span className="inline-flex gap-1">
+                    <IconMark title="Verified" active={i.status === "VERIFIED"} tone="text-emerald-600" onClick={() => onMark(i.id, "VERIFIED")}>
+                      <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} />
+                    </IconMark>
+                    <IconMark title="Damaged" active={i.status === "DAMAGED"} tone="text-amber-600" onClick={() => onMark(i.id, "DAMAGED")}>
+                      <AlertTriangle className="h-4 w-4" strokeWidth={1.5} />
+                    </IconMark>
+                    <IconMark title="Missing" active={i.status === "MISSING"} tone="text-red-600" onClick={() => onMark(i.id, "MISSING")}>
+                      <XCircle className="h-4 w-4" strokeWidth={1.5} />
+                    </IconMark>
+                  </span>
+                ) : (
+                  <span className="text-xs text-black/35">Locked</span>
+                )}
+              </Td>
+            </Tr>
+          ))}
         </TBody>
       </Table>
     </div>
@@ -262,38 +296,59 @@ function IconMark({ children, title, active, tone, onClick }) {
   );
 }
 
-function NewCycleModal({ open, onClose, setCycles, setItems, onCreated }) {
+function NewCycleModal({ open, onClose, assets, employees, onCreated }) {
+  const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     name: "",
     scopeType: "DEPARTMENT",
-    scopeLabel: departments[0].name,
+    scopeLabel: "",
     startDate: today,
     endDate: today,
-    auditorId: employees.find((e) => e.role === "ASSET_MANAGER")?.id || employees[0].id,
+    auditorId: "",
+    assetIds: [],
   });
+  const [error, setError] = useState("");
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  function submit(e) {
+  useEffect(() => {
+    if (!form.auditorId && employees.length) {
+      setForm((f) => ({
+        ...f,
+        auditorId: employees.find((e) => e.role === "ASSET_MANAGER")?.id || employees[0].id,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
+
+  function toggleAsset(id) {
+    setForm((f) => ({
+      ...f,
+      assetIds: f.assetIds.includes(id) ? f.assetIds.filter((x) => x !== id) : [...f.assetIds, id],
+    }));
+  }
+
+  async function submit(e) {
     e.preventDefault();
-    const id = `au-${Date.now()}`;
-    setCycles((list) => [
-      { id, name: form.name, scopeType: form.scopeType, scopeLabel: form.scopeLabel, startDate: form.startDate, endDate: form.endDate, status: "OPEN", auditorIds: [form.auditorId] },
-      ...list,
-    ]);
-    // Seed a handful of assets as pending items for the new cycle.
-    setItems((list) => [
-      ...list,
-      ...assets.slice(0, 6).map((a, idx) => ({
-        id: `${id}-i${idx}`,
-        cycleId: id,
-        assetId: a.id,
-        status: "PENDING",
-        note: null,
-      })),
-    ]);
-    onCreated(id);
-    setForm({ ...form, name: "" });
-    onClose();
+    setError("");
+    try {
+      const { cycle } = await apiFetch("/api/audits", {
+        method: "POST",
+        body: {
+          name: form.name,
+          scopeType: form.scopeType,
+          scopeLabel: form.scopeLabel,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          auditorIds: [form.auditorId],
+          assetIds: form.assetIds,
+        },
+      });
+      onCreated(cycle.id);
+      setForm((f) => ({ ...f, name: "", scopeLabel: "", assetIds: [] }));
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -301,15 +356,22 @@ function NewCycleModal({ open, onClose, setCycles, setItems, onCreated }) {
       open={open}
       onClose={onClose}
       title="New Audit Cycle"
-      description="Define scope, dates, and assign an auditor."
+      description="Define scope, dates, assets in scope, and assign an auditor."
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="filled" type="submit" form="cycle-form">Create Cycle</Button>
+          <Button variant="filled" type="submit" form="cycle-form" disabled={!form.assetIds.length}>
+            Create Cycle
+          </Button>
         </>
       }
     >
       <form id="cycle-form" onSubmit={submit} className="space-y-4">
+        {error && (
+          <div className="rounded-control border border-red-600/15 bg-red-500/10 px-3.5 py-3 text-xs text-red-700">
+            {error}
+          </div>
+        )}
         <Field label="Cycle Name">
           <Input value={form.name} onChange={update("name")} placeholder="e.g. Q4 HQ Audit" required />
         </Field>
@@ -338,6 +400,22 @@ function NewCycleModal({ open, onClose, setCycles, setItems, onCreated }) {
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </Select>
+        </Field>
+        <Field label="Assets in Scope" hint="Select every asset this cycle should verify.">
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-control border border-black/10 p-2">
+            {assets.map((a) => (
+              <label key={a.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-black/[0.03]">
+                <input
+                  type="checkbox"
+                  checked={form.assetIds.includes(a.id)}
+                  onChange={() => toggleAsset(a.id)}
+                  className="h-4 w-4"
+                />
+                <span className="font-mono text-xs text-black/45">{a.tag}</span>
+                <span className="text-foreground">{a.name}</span>
+              </label>
+            ))}
+          </div>
         </Field>
       </form>
     </Modal>

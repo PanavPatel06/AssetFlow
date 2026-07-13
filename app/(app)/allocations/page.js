@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, AlertTriangle, ArrowLeftRight } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/ui/Modal";
 import StatusPill from "@/components/ui/StatusPill";
@@ -13,18 +12,9 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/Table";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  assets,
-  employees,
-  departments,
-  allocations as seedAllocations,
-  transfers as seedTransfers,
-  getAsset,
-  holderName,
-  employeeName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { TRANSFER_STATUS } from "@/lib/statuses";
-import { isOverdue, formatDate, relativeDays, NOW } from "@/lib/format";
+import { isOverdue, formatDate, relativeDays } from "@/lib/format";
 import { can } from "@/lib/roles";
 
 const TABS = [
@@ -32,46 +22,65 @@ const TABS = [
   { id: "transfers", label: "Transfer Requests" },
 ];
 
-const today = NOW.toISOString().slice(0, 10);
+function holderName(holderUser, holderDepartment) {
+  return holderUser?.name || holderDepartment?.name || "—";
+}
 
 export default function AllocationsPage() {
   const { user } = useCurrentUser();
   const [tab, setTab] = useState("active");
-  const [allocations, setAllocations] = useState(seedAllocations);
-  const [transfers, setTransfers] = useState(seedTransfers);
+  const [loading, setLoading] = useState(true);
+  const [allocations, setAllocations] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [assets, setAssets] = useState([]);
 
   const [allocateOpen, setAllocateOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
+  const [returnNotes, setReturnNotes] = useState("");
 
-  const canAllocate = can(user.role, "allocateAsset");
-  const canApprove = can(user.role, "approveTransfer");
+  const canAllocate = user && can(user.role, "allocateAsset");
+  const canApprove = user && can(user.role, "approveTransfer");
+
+  async function loadAll() {
+    const [a, t, e, d, as] = await Promise.all([
+      apiFetch("/api/allocations"),
+      apiFetch("/api/transfers"),
+      apiFetch("/api/employees"),
+      apiFetch("/api/departments"),
+      apiFetch("/api/assets"),
+    ]);
+    setAllocations(a.allocations);
+    setTransfers(t.transfers);
+    setEmployees(e.employees);
+    setDepartments(d.departments);
+    setAssets(as.assets);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
 
   const active = allocations.filter((a) => a.status === "ACTIVE");
 
-  // --- Return flow ---
-  const [returnNotes, setReturnNotes] = useState("");
-  function confirmReturn() {
-    setAllocations((list) =>
-      list.map((a) =>
-        a.id === returnTarget.id
-          ? { ...a, status: "RETURNED", returnedOn: today, checkInNotes: returnNotes || "Returned." }
-          : a
-      )
-    );
+  async function confirmReturn() {
+    await apiFetch(`/api/allocations/${returnTarget.id}/return`, {
+      method: "POST",
+      body: { checkInNotes: returnNotes || undefined },
+    });
     setReturnTarget(null);
     setReturnNotes("");
+    loadAll();
   }
 
-  // --- Transfer approve / reject ---
-  function decideTransfer(id, decision) {
-    setTransfers((list) =>
-      list.map((t) =>
-        t.id === id
-          ? { ...t, status: decision, approvedById: user.id }
-          : t
-      )
-    );
+  async function decideTransfer(id, decision) {
+    await apiFetch(`/api/transfers/${id}`, { method: "PATCH", body: { decision } });
+    loadAll();
   }
+
+  if (!user || loading) return null;
 
   return (
     <div>
@@ -106,17 +115,16 @@ export default function AllocationsPage() {
             </THead>
             <TBody>
               {active.map((al) => {
-                const asset = getAsset(al.assetId);
                 const overdue = isOverdue(al.expectedReturn);
                 return (
                   <Tr key={al.id} className="hover:bg-black/[0.02]">
                     <Td>
-                      <Link href={`/assets/${asset.id}`} className="text-foreground hover:underline">
-                        {asset.name}
+                      <Link href={`/assets/${al.asset.id}`} className="text-foreground hover:underline">
+                        {al.asset.name}
                       </Link>
-                      <div className="font-mono text-xs text-black/45">{asset.tag}</div>
+                      <div className="font-mono text-xs text-black/45">{al.asset.tag}</div>
                     </Td>
-                    <Td className="text-black/60">{holderName(al.holderType, al.holderId)}</Td>
+                    <Td className="text-black/60">{holderName(al.holderUser, al.holderDepartment)}</Td>
                     <Td className="text-black/55">{formatDate(al.allocatedOn)}</Td>
                     <Td>
                       {al.expectedReturn ? (
@@ -157,40 +165,37 @@ export default function AllocationsPage() {
               </Tr>
             </THead>
             <TBody>
-              {transfers.map((t) => {
-                const asset = getAsset(t.assetId);
-                return (
-                  <Tr key={t.id} className="hover:bg-black/[0.02]">
-                    <Td>
-                      <Link href={`/assets/${asset.id}`} className="text-foreground hover:underline">
-                        {asset.name}
-                      </Link>
-                      <div className="font-mono text-xs text-black/45">{asset.tag}</div>
-                    </Td>
-                    <Td className="text-black/60">
-                      {employeeName(t.fromId)} <span className="text-black/30">→</span> {employeeName(t.toId)}
-                    </Td>
-                    <Td className="text-black/55">{formatDate(t.requestedOn)}</Td>
-                    <Td><StatusPill map={TRANSFER_STATUS} value={t.status} /></Td>
-                    <Td className="text-right">
-                      {t.status === "REQUESTED" && canApprove ? (
-                        <span className="flex justify-end gap-2">
-                          <Button size="sm" variant="danger" onClick={() => decideTransfer(t.id, "REJECTED")}>
-                            Reject
-                          </Button>
-                          <Button size="sm" variant="filled" onClick={() => decideTransfer(t.id, "REALLOCATED")}>
-                            Approve
-                          </Button>
-                        </span>
-                      ) : (
-                        <span className="text-xs text-black/35">
-                          {t.approvedById ? `by ${employeeName(t.approvedById)}` : "—"}
-                        </span>
-                      )}
-                    </Td>
-                  </Tr>
-                );
-              })}
+              {transfers.map((t) => (
+                <Tr key={t.id} className="hover:bg-black/[0.02]">
+                  <Td>
+                    <Link href={`/assets/${t.asset.id}`} className="text-foreground hover:underline">
+                      {t.asset.name}
+                    </Link>
+                    <div className="font-mono text-xs text-black/45">{t.asset.tag}</div>
+                  </Td>
+                  <Td className="text-black/60">
+                    {t.fromUser?.name} <span className="text-black/30">→</span> {t.toUser?.name}
+                  </Td>
+                  <Td className="text-black/55">{formatDate(t.requestedOn)}</Td>
+                  <Td><StatusPill map={TRANSFER_STATUS} value={t.status} /></Td>
+                  <Td className="text-right">
+                    {t.status === "REQUESTED" && canApprove ? (
+                      <span className="flex justify-end gap-2">
+                        <Button size="sm" variant="danger" onClick={() => decideTransfer(t.id, "REJECTED")}>
+                          Reject
+                        </Button>
+                        <Button size="sm" variant="filled" onClick={() => decideTransfer(t.id, "APPROVED")}>
+                          Approve
+                        </Button>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-black/35">
+                        {t.approvedBy ? `by ${t.approvedBy.name}` : "—"}
+                      </span>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
             </TBody>
           </Table>
         ))}
@@ -198,10 +203,10 @@ export default function AllocationsPage() {
       <AllocateModal
         open={allocateOpen}
         onClose={() => setAllocateOpen(false)}
-        allocations={allocations}
-        setAllocations={setAllocations}
-        setTransfers={setTransfers}
-        currentUserId={user.id}
+        assets={assets}
+        employees={employees}
+        departments={departments}
+        onDone={loadAll}
       />
 
       {/* Return modal */}
@@ -209,7 +214,7 @@ export default function AllocationsPage() {
         open={!!returnTarget}
         onClose={() => setReturnTarget(null)}
         title="Return Asset"
-        description={returnTarget ? getAsset(returnTarget.assetId)?.name : ""}
+        description={returnTarget?.asset?.name}
         footer={
           <>
             <Button onClick={() => setReturnTarget(null)}>Cancel</Button>
@@ -233,81 +238,90 @@ export default function AllocationsPage() {
 }
 
 /* --------- Allocate modal: demonstrates the double-allocation conflict --------- */
-function AllocateModal({ open, onClose, allocations, setAllocations, setTransfers, currentUserId }) {
+function AllocateModal({ open, onClose, assets, employees, departments, onDone }) {
   const [assetId, setAssetId] = useState("");
   const [holderType, setHolderType] = useState("EMPLOYEE");
   const [holderId, setHolderId] = useState("");
   const [expectedReturn, setExpectedReturn] = useState("");
-
-  // Is the chosen asset already actively held?
-  const conflict = allocations.find((a) => a.assetId === assetId && a.status === "ACTIVE");
+  const [conflict, setConflict] = useState(null);
+  const [error, setError] = useState("");
 
   function reset() {
     setAssetId("");
     setHolderType("EMPLOYEE");
     setHolderId("");
     setExpectedReturn("");
+    setConflict(null);
+    setError("");
   }
 
-  function allocate(e) {
+  function close() {
+    reset();
+    onClose();
+  }
+
+  async function allocate(e) {
     e.preventDefault();
-    if (conflict) return; // guarded by UI, but double-check
-    setAllocations((list) => [
-      ...list,
-      {
-        id: `al-${Date.now()}`,
-        assetId,
-        holderType,
-        holderId,
-        allocatedById: currentUserId,
-        allocatedOn: today,
-        expectedReturn: expectedReturn || null,
-        returnedOn: null,
-        status: "ACTIVE",
-        checkInNotes: null,
-      },
-    ]);
-    reset();
-    onClose();
+    setError("");
+    setConflict(null);
+    try {
+      await apiFetch("/api/allocations", {
+        method: "POST",
+        body: {
+          assetId,
+          holderType,
+          holderId,
+          expectedReturn: expectedReturn || undefined,
+        },
+      });
+      close();
+      onDone();
+    } catch (err) {
+      if (err.status === 409) {
+        setConflict(err.data.currentHolder);
+      } else {
+        setError(err.message);
+      }
+    }
   }
 
-  function requestTransfer() {
-    setTransfers((list) => [
-      ...list,
-      {
-        id: `t-${Date.now()}`,
-        assetId,
-        fromId: conflict.holderId,
-        toId: holderType === "EMPLOYEE" ? holderId : conflict.holderId,
-        requestedById: currentUserId,
-        requestedOn: today,
-        status: "REQUESTED",
-        approvedById: null,
-      },
-    ]);
-    reset();
-    onClose();
+  async function requestTransfer() {
+    setError("");
+    try {
+      await apiFetch("/api/transfers", {
+        method: "POST",
+        body: { assetId, toUserId: holderId },
+      });
+      close();
+      onDone();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   const holderOptions = holderType === "EMPLOYEE" ? employees : departments;
+  // The backend only supports employee-to-employee transfer requests.
+  const transferSupported = conflict?.holderType === "EMPLOYEE" && holderType === "EMPLOYEE";
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="Allocate Asset"
       description="Assign an asset to an employee or department."
       footer={
         conflict ? (
           <>
-            <Button onClick={onClose}>Cancel</Button>
-            <Button variant="filled" onClick={requestTransfer} disabled={!holderId}>
-              <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.5} /> Request Transfer
-            </Button>
+            <Button onClick={close}>Cancel</Button>
+            {transferSupported && (
+              <Button variant="filled" onClick={requestTransfer} disabled={!holderId}>
+                <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.5} /> Request Transfer
+              </Button>
+            )}
           </>
         ) : (
           <>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={close}>Cancel</Button>
             <Button variant="filled" type="submit" form="allocate-form" disabled={!assetId || !holderId}>
               Allocate
             </Button>
@@ -316,8 +330,21 @@ function AllocateModal({ open, onClose, allocations, setAllocations, setTransfer
       }
     >
       <form id="allocate-form" onSubmit={allocate} className="space-y-4">
+        {error && (
+          <div className="rounded-control border border-red-600/15 bg-red-500/10 px-3.5 py-3 text-xs text-red-700">
+            {error}
+          </div>
+        )}
+
         <Field label="Asset">
-          <Select value={assetId} onChange={(e) => setAssetId(e.target.value)} required>
+          <Select
+            value={assetId}
+            onChange={(e) => {
+              setAssetId(e.target.value);
+              setConflict(null);
+            }}
+            required
+          >
             <option value="">— Select an asset —</option>
             {assets.map((a) => (
               <option key={a.id} value={a.id}>{a.tag} · {a.name}</option>
@@ -331,8 +358,10 @@ function AllocateModal({ open, onClose, allocations, setAllocations, setTransfer
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" strokeWidth={1.5} />
             <p className="text-xs leading-relaxed text-amber-800">
               This asset is currently held by{" "}
-              <span className="font-medium">{holderName(conflict.holderType, conflict.holderId)}</span>.
-              You can&apos;t allocate it directly — request a transfer instead.
+              <span className="font-medium">{holderName(conflict.holderUser, conflict.holderDepartment)}</span>.
+              {transferSupported
+                ? " You can't allocate it directly — request a transfer instead."
+                : " Transfers can only be requested between employees — ask the current holder's department (or an Asset Manager) to return it first."}
             </p>
           </div>
         )}

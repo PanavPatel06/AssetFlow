@@ -25,6 +25,7 @@ export {
   DragHandGesture as GripVertical,
   InfoCircle as Info,
   Lock,
+  LogOut,
   Mail as MailCheck,
   Menu,
   Box as PackageCheck,

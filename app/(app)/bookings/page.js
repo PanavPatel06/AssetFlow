@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, CalendarClock, Ban, Info, GripVertical } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -10,96 +10,105 @@ import StatusPill from "@/components/ui/StatusPill";
 import EmptyState from "@/components/ui/EmptyState";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  bookableAssets,
-  bookings as seedBookings,
-  employeeName,
-} from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 import { BOOKING_STATUS } from "@/lib/statuses";
-import { formatTime } from "@/lib/format";
+import { formatTime, NOW } from "@/lib/format";
 
 const DAY_START = 8; // 08:00
 const DAY_END = 20; // 20:00
 const TOTAL_MIN = (DAY_END - DAY_START) * 60;
 const HEIGHT = 520; // px height of the day column
 const SNAP = 15; // snap dragging to 15-minute increments
-const DEFAULT_DATE = "2026-07-13";
 
 const minsInDay = (iso) => {
   const d = new Date(iso);
   return d.getHours() * 60 + d.getMinutes();
 };
-const dateOf = (iso) => iso.slice(0, 10);
+const dateOf = (iso) => new Date(iso).toISOString().slice(0, 10);
 const pad = (n) => String(n).padStart(2, "0");
 const fmtMin = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
+// The API stores a booking's status as UPCOMING until it's cancelled — there's
+// no background job flipping it to Ongoing/Completed as time passes. Derive
+// the display status from the actual time instead.
+function effectiveStatus(b) {
+  if (b.status === "CANCELLED") return "CANCELLED";
+  const now = NOW;
+  const start = new Date(b.start);
+  const end = new Date(b.end);
+  if (now < start) return "UPCOMING";
+  if (now >= start && now < end) return "ONGOING";
+  return "COMPLETED";
+}
+
 export default function BookingsPage() {
   const { user } = useCurrentUser();
-  const resources = bookableAssets();
-
-  // Default to a resource that actually has bookings today, so the timeline
-  // opens with content instead of an empty grid.
-  const [assetId, setAssetId] = useState(
-    () =>
-      (
-        resources.find((r) =>
-          seedBookings.some(
-            (b) => b.assetId === r.id && dateOf(b.start) === DEFAULT_DATE
-          )
-        ) || resources[0]
-      ).id
-  );
-  const [date, setDate] = useState(DEFAULT_DATE);
-  const [bookings, setBookings] = useState(seedBookings);
+  const [resources, setResources] = useState([]);
+  const [assetId, setAssetId] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bookings, setBookings] = useState([]);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch("/api/assets").then(({ assets }) => {
+      const bookable = assets.filter((a) => a.isBookable);
+      setResources(bookable);
+      setAssetId(bookable[0]?.id || "");
+      setLoading(false);
+    });
+  }, []);
+
+  async function loadBookings() {
+    if (!assetId) return;
+    const { bookings } = await apiFetch(`/api/bookings?assetId=${assetId}`);
+    setBookings(bookings);
+  }
+
+  useEffect(() => {
+    loadBookings();
+  }, [assetId]);
 
   const resource = resources.find((r) => r.id === assetId);
 
   const dayBookings = bookings.filter(
-    (b) => b.assetId === assetId && dateOf(b.start) === date && b.status !== "CANCELLED"
+    (b) => dateOf(b.start) === date && b.status !== "CANCELLED"
   );
 
-  const resourceBookings = bookings
-    .filter((b) => b.assetId === assetId)
-    .sort((a, b) => new Date(b.start) - new Date(a.start));
+  const resourceBookings = [...bookings].sort((a, b) => new Date(b.start) - new Date(a.start));
 
-  function cancelBooking(id) {
-    setBookings((list) =>
-      list.map((b) => (b.id === id ? { ...b, status: "CANCELLED" } : b))
-    );
+  async function cancelBooking(id) {
+    await apiFetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+    loadBookings();
   }
 
-  // Set a booking's start + end (same day) from dragging or resizing. Values
-  // are snapped to 15 min and clamped to the day; rejected (reverts) if the new
-  // slot would overlap another booking on the same resource.
-  function updateBookingTimes(id, startMin, endMin) {
-    setBookings((list) => {
-      const b = list.find((x) => x.id === id);
-      if (!b) return list;
-      const day = dateOf(b.start);
-      let s = Math.round(startMin / SNAP) * SNAP;
-      let e = Math.round(endMin / SNAP) * SNAP;
-      s = Math.max(DAY_START * 60, Math.min(s, DAY_END * 60 - SNAP));
-      e = Math.min(DAY_END * 60, Math.max(e, s + SNAP));
+  // Optimistically commit a drag/resize, then persist; revert on conflict.
+  async function updateBookingTimes(id, startMin, endMin) {
+    const previous = bookings;
+    const b = previous.find((x) => x.id === id);
+    if (!b) return;
+    const day = dateOf(b.start);
+    let s = Math.round(startMin / SNAP) * SNAP;
+    let e = Math.round(endMin / SNAP) * SNAP;
+    s = Math.max(DAY_START * 60, Math.min(s, DAY_END * 60 - SNAP));
+    e = Math.min(DAY_END * 60, Math.max(e, s + SNAP));
 
-      const clash = list.some(
-        (o) =>
-          o.id !== id &&
-          o.assetId === b.assetId &&
-          o.status !== "CANCELLED" &&
-          dateOf(o.start) === day &&
-          s < minsInDay(o.end) &&
-          e > minsInDay(o.start)
-      );
-      if (clash) return list; // reject -> block snaps back
+    const newStart = `${day}T${fmtMin(s)}:00`;
+    const newEnd = `${day}T${fmtMin(e)}:00`;
 
-      return list.map((x) =>
-        x.id === id
-          ? { ...x, start: `${day}T${fmtMin(s)}:00`, end: `${day}T${fmtMin(e)}:00` }
-          : x
-      );
-    });
+    setBookings((list) => list.map((x) => (x.id === id ? { ...x, start: newStart, end: newEnd } : x)));
+
+    try {
+      await apiFetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        body: { start: newStart, end: newEnd },
+      });
+    } catch {
+      setBookings(previous); // revert — conflict or other failure
+    }
   }
+
+  if (!user || loading || !resource) return null;
 
   return (
     <div>
@@ -146,27 +155,30 @@ export default function BookingsPage() {
             <EmptyState icon={CalendarClock} title="No bookings yet" />
           ) : (
             <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
-              {resourceBookings.map((b) => (
-                <Card key={b.id} hover={false} className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-sm text-foreground">{b.purpose}</div>
-                      <div className="font-mono text-xs text-black/50">
-                        {dateOf(b.start)} · {formatTime(b.start)}–{formatTime(b.end)}
+              {resourceBookings.map((b) => {
+                const status = effectiveStatus(b);
+                return (
+                  <Card key={b.id} hover={false} className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-sm text-foreground">{b.purpose}</div>
+                        <div className="font-mono text-xs text-black/50">
+                          {dateOf(b.start)} · {formatTime(b.start)}–{formatTime(b.end)}
+                        </div>
+                        <div className="mt-0.5 text-xs text-black/45">{b.bookedBy?.name}</div>
                       </div>
-                      <div className="mt-0.5 text-xs text-black/45">{employeeName(b.bookedById)}</div>
+                      <StatusPill map={BOOKING_STATUS} value={status} dot={status === "ONGOING"} pulse={status === "ONGOING"} />
                     </div>
-                    <StatusPill map={BOOKING_STATUS} value={b.status} dot={b.status === "ONGOING"} pulse={b.status === "ONGOING"} />
-                  </div>
-                  {["UPCOMING", "ONGOING"].includes(b.status) && (
-                    <div className="mt-3 flex justify-end">
-                      <Button size="sm" variant="danger" onClick={() => cancelBooking(b.id)}>
-                        <Ban className="h-3.5 w-3.5" strokeWidth={1.5} /> Cancel
-                      </Button>
-                    </div>
-                  )}
-                </Card>
-              ))}
+                    {["UPCOMING", "ONGOING"].includes(status) && (
+                      <div className="mt-3 flex justify-end">
+                        <Button size="sm" variant="danger" onClick={() => cancelBooking(b.id)}>
+                          <Ban className="h-3.5 w-3.5" strokeWidth={1.5} /> Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -177,9 +189,7 @@ export default function BookingsPage() {
         onClose={() => setOpen(false)}
         resource={resource}
         date={date}
-        bookings={bookings}
-        setBookings={setBookings}
-        currentUserId={user.id}
+        onDone={loadBookings}
       />
     </div>
   );
@@ -319,13 +329,13 @@ function DayTimeline({ bookings, onUpdate }) {
 }
 
 /* ----------------------------- New booking modal --------------------------- */
-function NewBookingModal({ open, onClose, resource, date, bookings, setBookings, currentUserId }) {
+function NewBookingModal({ open, onClose, resource, date, onDone }) {
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("10:00");
   const [purpose, setPurpose] = useState("");
   const [error, setError] = useState(null);
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     setError(null);
 
@@ -337,36 +347,30 @@ function NewBookingModal({ open, onClose, resource, date, bookings, setBookings,
       return;
     }
 
-    const clash = bookings.find((b) => {
-      if (b.assetId !== resource.id || b.status === "CANCELLED") return false;
-      if (dateOf(b.start) !== date) return false;
-      const bStart = new Date(b.start);
-      const bEnd = new Date(b.end);
-      return newStart < bEnd && newEnd > bStart;
-    });
-
-    if (clash) {
-      setError(
-        `Overlaps an existing booking (${formatTime(clash.start)}–${formatTime(clash.end)} · ${clash.purpose}). Pick a slot that starts at or after it ends.`
-      );
-      return;
+    try {
+      await apiFetch("/api/bookings", {
+        method: "POST",
+        body: {
+          assetId: resource.id,
+          start: newStart.toISOString(),
+          end: newEnd.toISOString(),
+          purpose: purpose || undefined,
+        },
+      });
+      setPurpose("");
+      setError(null);
+      onClose();
+      onDone();
+    } catch (err) {
+      if (err.status === 409 && err.data?.conflict) {
+        const c = err.data.conflict;
+        setError(
+          `Overlaps an existing booking (${formatTime(c.start)}–${formatTime(c.end)}${c.purpose ? ` · ${c.purpose}` : ""}). Pick a slot that starts at or after it ends.`
+        );
+      } else {
+        setError(err.message);
+      }
     }
-
-    setBookings((list) => [
-      ...list,
-      {
-        id: `b-${Date.now()}`,
-        assetId: resource.id,
-        bookedById: currentUserId,
-        start: `${date}T${start}:00`,
-        end: `${date}T${end}:00`,
-        status: "UPCOMING",
-        purpose: purpose || "Booking",
-      },
-    ]);
-    setPurpose("");
-    setError(null);
-    onClose();
   }
 
   return (

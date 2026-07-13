@@ -1,28 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { ArrowRight, Info } from "@/components/icons";
 import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
-import { departments } from "@/lib/mockData";
+import { apiFetch } from "@/lib/apiClient";
 
 export default function SignupPage() {
   const router = useRouter();
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    departmentId: departments[0].id,
-    password: "",
-  });
+  const [departments, setDepartments] = useState([]);
+  const [form, setForm] = useState({ name: "", email: "", departmentId: "", password: "" });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    apiFetch("/api/departments").then(({ departments }) => {
+      const active = departments.filter((d) => d.status === "ACTIVE");
+      setDepartments(active);
+      setForm((f) => ({ ...f, departmentId: active[0]?.id || "" }));
+    });
+  }, []);
 
   const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    // Phase 1: pretend to create an Employee account, then go to the app.
-    router.push("/dashboard");
+    setError("");
+    setSubmitting(true);
+
+    try {
+      await apiFetch("/api/auth/register", { method: "POST", body: form });
+      const result = await signIn("credentials", {
+        email: form.email,
+        password: form.password,
+        redirect: false,
+      });
+      if (result?.error) {
+        setError("Account created — sign in from the login page.");
+        router.push("/login");
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -45,6 +72,12 @@ export default function SignupPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        {error && (
+          <div className="rounded-control border border-red-600/15 bg-red-500/10 px-3.5 py-3 text-xs text-red-700">
+            {error}
+          </div>
+        )}
+
         <Field label="Full name">
           <Input
             value={form.name}
@@ -66,13 +99,11 @@ export default function SignupPage() {
 
         <Field label="Department">
           <Select value={form.departmentId} onChange={update("departmentId")}>
-            {departments
-              .filter((d) => d.status === "ACTIVE")
-              .map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
           </Select>
         </Field>
 
@@ -83,11 +114,13 @@ export default function SignupPage() {
             onChange={update("password")}
             placeholder="Choose a strong password"
             required
+            minLength={8}
           />
         </Field>
 
-        <Button type="submit" variant="filled" size="block">
-          Create account <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+        <Button type="submit" variant="filled" size="block" disabled={submitting}>
+          {submitting ? "Creating account…" : "Create account"}{" "}
+          {!submitting && <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />}
         </Button>
       </form>
 

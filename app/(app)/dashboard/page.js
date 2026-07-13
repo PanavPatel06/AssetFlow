@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   PackageCheck,
@@ -17,55 +18,37 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import StatusPill from "@/components/ui/StatusPill";
 import { useCurrentUser } from "@/lib/currentUser";
-import {
-  assets,
-  allocations,
-  transfers,
-  bookings,
-  maintenance,
-  activityLog,
-  getAsset,
-  employeeName,
-  holderName,
-} from "@/lib/mockData";
-import { isOverdue, formatDate, relativeDays, timeAgo, NOW } from "@/lib/format";
+import { apiFetch } from "@/lib/apiClient";
+import { formatDate, relativeDays, timeAgo, NOW } from "@/lib/format";
+
+function holderName(holderUser, holderDepartment) {
+  return holderUser?.name || holderDepartment?.name || "—";
+}
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    apiFetch("/api/dashboard").then(setData);
+  }, []);
+
+  if (!user || !data) return null;
+
   const firstName = user.name.split(" ")[0];
   const hour = NOW.getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  // --- KPI computations (from mock data) ---
-  const available = assets.filter((a) => a.status === "AVAILABLE").length;
-  const allocated = assets.filter((a) => a.status === "ALLOCATED").length;
-  const activeMaint = maintenance.filter((m) =>
-    ["PENDING", "APPROVED", "TECHNICIAN_ASSIGNED", "IN_PROGRESS"].includes(m.status)
-  ).length;
-  const activeBookings = bookings.filter((b) =>
-    ["UPCOMING", "ONGOING"].includes(b.status)
-  ).length;
-  const pendingTransfers = transfers.filter((t) => t.status === "REQUESTED").length;
+  const { kpis, overdue, upcoming, recentActivity } = data;
 
-  const activeAllocations = allocations.filter((a) => a.status === "ACTIVE");
-  const overdue = activeAllocations.filter((a) => isOverdue(a.expectedReturn));
-  const upcoming = activeAllocations
-    .filter((a) => a.expectedReturn && !isOverdue(a.expectedReturn))
-    .sort((a, b) => new Date(a.expectedReturn) - new Date(b.expectedReturn));
-
-  const kpis = [
-    { label: "Assets Available", value: available, icon: PackageCheck, href: "/assets?status=AVAILABLE" },
-    { label: "Assets Allocated", value: allocated, icon: PackageOpen, href: "/assets?status=ALLOCATED" },
-    { label: "Maintenance Today", value: activeMaint, icon: Wrench, href: "/maintenance" },
-    { label: "Active Bookings", value: activeBookings, icon: CalendarClock, href: "/bookings" },
-    { label: "Pending Transfers", value: pendingTransfers, icon: ArrowLeftRight, href: "/allocations", note: pendingTransfers ? "needs review" : null, tone: pendingTransfers ? "warn" : null },
-    { label: "Upcoming Returns", value: upcoming.length, icon: Undo2, href: "/allocations" },
+  const kpiCards = [
+    { label: "Assets Available", value: kpis.assetsAvailable, icon: PackageCheck, href: "/assets?status=AVAILABLE" },
+    { label: "Assets Allocated", value: kpis.assetsAllocated, icon: PackageOpen, href: "/assets?status=ALLOCATED" },
+    { label: "Maintenance Active", value: kpis.maintenanceActive, icon: Wrench, href: "/maintenance" },
+    { label: "Active Bookings", value: kpis.activeBookings, icon: CalendarClock, href: "/bookings" },
+    { label: "Pending Transfers", value: kpis.pendingTransfers, icon: ArrowLeftRight, href: "/allocations", note: kpis.pendingTransfers ? "needs review" : null, tone: kpis.pendingTransfers ? "warn" : null },
+    { label: "Upcoming Returns", value: kpis.upcomingReturns, icon: Undo2, href: "/allocations" },
   ];
-
-  const recent = [...activityLog]
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 6);
 
   return (
     <div>
@@ -86,7 +69,7 @@ export default function DashboardPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {kpis.map((k) => (
+        {kpiCards.map((k) => (
           <KpiCard key={k.label} {...k} />
         ))}
       </div>
@@ -105,24 +88,21 @@ export default function DashboardPage() {
             <p className="text-sm text-black/45">Nothing overdue. Nice.</p>
           ) : (
             <ul className="divide-y divide-black/[0.06]">
-              {overdue.map((al) => {
-                const asset = getAsset(al.assetId);
-                return (
-                  <li key={al.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <Link href={`/assets/${asset.id}`} className="block truncate text-sm text-foreground hover:underline">
-                        {asset.name}
-                      </Link>
-                      <span className="text-xs text-black/45">
-                        {employeeName(al.holderId)} · {asset.tag}
-                      </span>
-                    </div>
-                    <span className="shrink-0 text-xs text-red-700">
-                      due {relativeDays(al.expectedReturn)}
+              {overdue.map((al) => (
+                <li key={al.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <Link href={`/assets/${al.asset.id}`} className="block truncate text-sm text-foreground hover:underline">
+                      {al.asset.name}
+                    </Link>
+                    <span className="text-xs text-black/45">
+                      {holderName(al.holderUser, al.holderDepartment)} · {al.asset.tag}
                     </span>
-                  </li>
-                );
-              })}
+                  </div>
+                  <span className="shrink-0 text-xs text-red-700">
+                    due {relativeDays(al.expectedReturn)}
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
         </Card>
@@ -136,24 +116,21 @@ export default function DashboardPage() {
             <p className="text-sm text-black/45">No upcoming returns scheduled.</p>
           ) : (
             <ul className="divide-y divide-black/[0.06]">
-              {upcoming.map((al) => {
-                const asset = getAsset(al.assetId);
-                return (
-                  <li key={al.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <Link href={`/assets/${asset.id}`} className="block truncate text-sm text-foreground hover:underline">
-                        {asset.name}
-                      </Link>
-                      <span className="text-xs text-black/45">
-                        {holderName(al.holderType, al.holderId)} · {asset.tag}
-                      </span>
-                    </div>
-                    <span className="shrink-0 text-xs text-black/45">
-                      {formatDate(al.expectedReturn)}
+              {upcoming.map((al) => (
+                <li key={al.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <Link href={`/assets/${al.asset.id}`} className="block truncate text-sm text-foreground hover:underline">
+                      {al.asset.name}
+                    </Link>
+                    <span className="text-xs text-black/45">
+                      {holderName(al.holderUser, al.holderDepartment)} · {al.asset.tag}
                     </span>
-                  </li>
-                );
-              })}
+                  </div>
+                  <span className="shrink-0 text-xs text-black/45">
+                    {formatDate(al.expectedReturn)}
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
         </Card>
@@ -169,11 +146,11 @@ export default function DashboardPage() {
           </Link>
         </div>
         <ul className="space-y-3">
-          {recent.map((log) => (
+          {recentActivity.map((log) => (
             <li key={log.id} className="flex items-start gap-3 text-sm">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-black/20" />
               <div className="min-w-0 flex-1">
-                <span className="text-foreground">{employeeName(log.actorId)}</span>{" "}
+                <span className="text-foreground">{log.actor?.name}</span>{" "}
                 <span className="text-black/55">{log.action}</span>
               </div>
               <span className="shrink-0 font-mono text-xs text-black/35">
