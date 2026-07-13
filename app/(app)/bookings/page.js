@@ -123,8 +123,8 @@ export default function BookingsPage() {
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="sm:w-48" />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Card hover={false} className="lg:col-span-2">
+      <div className="grid items-start gap-3 lg:grid-cols-3">
+        <Card hover={false} className="self-start lg:col-span-2">
           <div className="mb-1 flex items-center justify-between">
             <h3 className="text-lg font-light text-foreground">{resource.name}</h3>
             <span className="text-xs text-black/45">
@@ -145,7 +145,7 @@ export default function BookingsPage() {
           {resourceBookings.length === 0 ? (
             <EmptyState icon={CalendarClock} title="No bookings yet" />
           ) : (
-            <div className="space-y-2">
+            <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
               {resourceBookings.map((b) => (
                 <Card key={b.id} hover={false} className="p-4">
                   <div className="flex items-start justify-between gap-2">
