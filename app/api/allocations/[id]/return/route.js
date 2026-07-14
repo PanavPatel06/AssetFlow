@@ -14,7 +14,10 @@ export async function POST(req, { params }) {
   const { data, error: validationError } = validate(allocationReturnSchema, await req.json().catch(() => ({})));
   if (validationError) return validationError;
 
-  const allocation = await prisma.allocation.findUnique({ where: { id }, include: { asset: true } });
+  const allocation = await prisma.allocation.findFirst({
+    where: { id, organizationId: user.organizationId },
+    include: { asset: true },
+  });
   if (!allocation) {
     return NextResponse.json({ error: "Allocation not found." }, { status: 404 });
   }
@@ -43,6 +46,7 @@ export async function POST(req, { params }) {
   ]);
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Returned ${allocation.asset.tag} (${allocation.asset.name})`,
     entity: "Allocation",

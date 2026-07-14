@@ -5,10 +5,11 @@ import { validate, categoryCreateSchema } from "@/lib/validation";
 import { logActivity } from "@/lib/activity";
 
 export async function GET() {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const categories = await prisma.assetCategory.findMany({
+    where: { organizationId: user.organizationId },
     include: { _count: { select: { assets: true } } },
     orderBy: { name: "asc" },
   });
@@ -26,10 +27,11 @@ export async function POST(req) {
   if (validationError) return validationError;
 
   const category = await prisma.assetCategory.create({
-    data: { name: data.name, customFields: data.customFields ?? [] },
+    data: { organizationId: user.organizationId, name: data.name, customFields: data.customFields ?? [] },
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Created asset category ${category.name}`,
     entity: "AssetCategory",

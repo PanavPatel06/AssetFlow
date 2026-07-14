@@ -6,10 +6,11 @@ import { requireUser } from "@/lib/apiAuth";
 // list it (needed across the app for pickers: allocate-to, booked-by, audit
 // auditors, etc.) — only PATCH (role/status/department changes) is Admin-only.
 export async function GET() {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const employees = await prisma.user.findMany({
+    where: { organizationId: user.organizationId },
     select: {
       id: true,
       name: true,

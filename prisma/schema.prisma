@@ -106,21 +106,50 @@ enum NotificationType {
 }
 
 // ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+// One row per customer organization. Every tenant-scoped table below carries
+// an organizationId so a single deployment (one database) can serve many
+// organizations without their data ever mixing. `slug` is the human-shareable
+// "organization code" employees use to join an existing org at signup.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  departments Department[]
+  categories  AssetCategory[]
+  assets      Asset[]
+  allocations Allocation[]
+  transfers   TransferRequest[]
+  bookings    Booking[]
+  maintenance MaintenanceRequest[]
+  auditCycles AuditCycle[]
+  activityLogs ActivityLog[]
+}
+
+// ---------------------------------------------------------------------------
 // Core master data
 // ---------------------------------------------------------------------------
 
 model User {
-  id           String       @id @default(cuid())
-  name         String
-  email        String       @unique
-  passwordHash String
-  role         Role         @default(EMPLOYEE)
-  title        String?
-  status       ActiveStatus @default(ACTIVE)
-  departmentId String?
-  department   Department?  @relation("DepartmentEmployees", fields: [departmentId], references: [id])
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  email          String       @unique // globally unique: one email = one account = one organization
+  passwordHash   String
+  role           Role         @default(EMPLOYEE)
+  title          String?
+  status         ActiveStatus @default(ACTIVE)
+  departmentId   String?
+  department     Department?  @relation("DepartmentEmployees", fields: [departmentId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   headOfDepartments   Department[]         @relation("DepartmentHead")
   allocationsHeld     Allocation[]         @relation("AllocationHolderUser")
@@ -138,16 +167,19 @@ model User {
   currentlyHeldAssets Asset[]              @relation("AssetCurrentHolderUser")
 
   @@index([departmentId])
+  @@index([organizationId])
 }
 
 model Department {
-  id       String       @id @default(cuid())
-  name     String
-  status   ActiveStatus @default(ACTIVE)
-  headId   String?
-  head     User?        @relation("DepartmentHead", fields: [headId], references: [id])
-  parentId String?
-  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  status         ActiveStatus @default(ACTIVE)
+  headId         String?
+  head           User?        @relation("DepartmentHead", fields: [headId], references: [id])
+  parentId       String?
+  parent         Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
 
   children  Department[]  @relation("DepartmentHierarchy")
   employees User[]        @relation("DepartmentEmployees")
@@ -159,15 +191,20 @@ model Department {
 
   @@index([headId])
   @@index([parentId])
+  @@index([organizationId])
 }
 
 model AssetCategory {
-  id           String   @id @default(cuid())
-  name         String
-  customFields Json     @default("[]") // e.g. ["Warranty Period", "Voltage"]
-  assets       Asset[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  customFields   Json         @default("[]") // e.g. ["Warranty Period", "Voltage"]
+  assets         Asset[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +213,9 @@ model AssetCategory {
 
 model Asset {
   id               String      @id @default(cuid())
-  tag              String      @unique // auto-generated, e.g. AF-0001
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  tag              String      // auto-generated, e.g. AF-0001 — unique per organization, not globally
   name             String
   categoryId       String
   category         AssetCategory @relation(fields: [categoryId], references: [id])
@@ -205,10 +244,12 @@ model Asset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, tag])
   @@index([categoryId])
   @@index([status])
   @@index([currentHolderUserId])
   @@index([currentHolderDepartmentId])
+  @@index([organizationId])
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +257,9 @@ model Asset {
 // ---------------------------------------------------------------------------
 
 model Allocation {
-  id         String   @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   assetId    String
   asset      Asset    @relation(fields: [assetId], references: [id])
   holderType HolderType
@@ -243,10 +286,13 @@ model Allocation {
   @@index([holderUserId])
   @@index([holderDepartmentId])
   @@index([status])
+  @@index([organizationId])
 }
 
 model TransferRequest {
-  id     String @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   assetId String
   asset  Asset  @relation(fields: [assetId], references: [id])
 
@@ -269,10 +315,13 @@ model TransferRequest {
 
   @@index([assetId])
   @@index([status])
+  @@index([organizationId])
 }
 
 model Booking {
-  id         String        @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   assetId    String
   asset      Asset         @relation(fields: [assetId], references: [id])
   bookedById String
@@ -287,10 +336,13 @@ model Booking {
 
   @@index([assetId, start, end])
   @@index([status])
+  @@index([organizationId])
 }
 
 model MaintenanceRequest {
-  id      String   @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   assetId String
   asset   Asset    @relation(fields: [assetId], references: [id])
 
@@ -311,10 +363,13 @@ model MaintenanceRequest {
 
   @@index([assetId])
   @@index([status])
+  @@index([organizationId])
 }
 
 model AuditCycle {
-  id         String    @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   name       String
   scopeType  ScopeType
   scopeLabel String
@@ -327,6 +382,8 @@ model AuditCycle {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 model AuditItem {
@@ -362,7 +419,9 @@ model Notification {
 }
 
 model ActivityLog {
-  id        String   @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   actorId   String
   actor     User     @relation(fields: [actorId], references: [id])
   action    String
@@ -371,4 +430,5 @@ model ActivityLog {
 
   @@index([actorId])
   @@index([createdAt])
+  @@index([organizationId])
 }

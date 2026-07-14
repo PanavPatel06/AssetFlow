@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/apiAuth";
 
 export async function GET(req, { params }) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { id } = await params;
-  const cycle = await prisma.auditCycle.findUnique({
-    where: { id },
+  const cycle = await prisma.auditCycle.findFirst({
+    where: { id, organizationId: user.organizationId },
     include: {
       auditors: { select: { id: true, name: true } },
       items: {

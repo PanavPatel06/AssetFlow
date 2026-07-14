@@ -10,8 +10,8 @@ export async function POST(req, { params }) {
   if (error) return error;
 
   const { id } = await params;
-  const cycle = await prisma.auditCycle.findUnique({
-    where: { id },
+  const cycle = await prisma.auditCycle.findFirst({
+    where: { id, organizationId: user.organizationId },
     include: {
       auditors: { select: { id: true } },
       items: { include: { asset: { select: { id: true, tag: true, name: true } } } },
@@ -42,6 +42,7 @@ export async function POST(req, { params }) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Closed audit cycle "${cycle.name}"${missingItems.length ? ` — ${missingItems.length} asset(s) marked Lost` : ""}`,
     entity: "Audit",

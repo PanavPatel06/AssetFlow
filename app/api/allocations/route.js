@@ -13,7 +13,7 @@ const INCLUDE = {
 
 // GET /api/allocations?status=ACTIVE&assetId=...
 export async function GET(req) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -22,6 +22,7 @@ export async function GET(req) {
 
   const allocations = await prisma.allocation.findMany({
     where: {
+      organizationId: user.organizationId,
       ...(status ? { status } : {}),
       ...(assetId ? { assetId } : {}),
     },
@@ -44,7 +45,7 @@ export async function POST(req) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const asset = await tx.asset.findUnique({ where: { id: data.assetId } });
+      const asset = await tx.asset.findFirst({ where: { id: data.assetId, organizationId: user.organizationId } });
       if (!asset) {
         throw Object.assign(new Error("Asset not found."), { status: 404 });
       }
@@ -65,15 +66,16 @@ export async function POST(req) {
       }
 
       if (data.holderType === "EMPLOYEE") {
-        const holder = await tx.user.findUnique({ where: { id: data.holderId } });
+        const holder = await tx.user.findFirst({ where: { id: data.holderId, organizationId: user.organizationId } });
         if (!holder) throw Object.assign(new Error("Employee not found."), { status: 400 });
       } else {
-        const holder = await tx.department.findUnique({ where: { id: data.holderId } });
+        const holder = await tx.department.findFirst({ where: { id: data.holderId, organizationId: user.organizationId } });
         if (!holder) throw Object.assign(new Error("Department not found."), { status: 400 });
       }
 
       const allocation = await tx.allocation.create({
         data: {
+          organizationId: user.organizationId,
           assetId: data.assetId,
           holderType: data.holderType,
           holderUserId: data.holderType === "EMPLOYEE" ? data.holderId : null,
@@ -98,6 +100,7 @@ export async function POST(req) {
     });
 
     await logActivity({
+      organizationId: user.organizationId,
       actorId: user.id,
       action: `Allocated ${result.asset.tag} (${result.asset.name}) to ${
         result.holderUser?.name || result.holderDepartment?.name

@@ -11,11 +11,11 @@ const INCLUDE = {
 };
 
 export async function GET(req, { params }) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { id } = await params;
-  const request = await prisma.maintenanceRequest.findUnique({ where: { id }, include: INCLUDE });
+  const request = await prisma.maintenanceRequest.findFirst({ where: { id, organizationId: user.organizationId }, include: INCLUDE });
   if (!request) {
     return NextResponse.json({ error: "Maintenance request not found." }, { status: 404 });
   }
@@ -46,8 +46,8 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: "Technician name is required." }, { status: 400 });
   }
 
-  const request = await prisma.maintenanceRequest.findUnique({
-    where: { id },
+  const request = await prisma.maintenanceRequest.findFirst({
+    where: { id, organizationId: user.organizationId },
     include: { asset: { select: { id: true, tag: true, name: true } } },
   });
   if (!request) {
@@ -110,6 +110,7 @@ export async function PATCH(req, { params }) {
   }[data.action];
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `${actionLabel} maintenance for ${request.asset.tag} (${request.asset.name})`,
     entity: "Maintenance",

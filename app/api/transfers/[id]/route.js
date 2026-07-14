@@ -14,8 +14,8 @@ export async function PATCH(req, { params }) {
   const { data, error: validationError } = validate(transferDecisionSchema, await req.json());
   if (validationError) return validationError;
 
-  const transfer = await prisma.transferRequest.findUnique({
-    where: { id },
+  const transfer = await prisma.transferRequest.findFirst({
+    where: { id, organizationId: user.organizationId },
     include: { asset: { select: { id: true, tag: true, name: true } } },
   });
   if (!transfer) {
@@ -31,6 +31,7 @@ export async function PATCH(req, { params }) {
       data: { status: "REJECTED", approvedById: user.id },
     });
     await logActivity({
+      organizationId: user.organizationId,
       actorId: user.id,
       action: `Rejected transfer of ${transfer.asset.tag}`,
       entity: "Transfer",
@@ -58,6 +59,7 @@ export async function PATCH(req, { params }) {
 
     await tx.allocation.create({
       data: {
+        organizationId: user.organizationId,
         assetId: transfer.assetId,
         holderType: "EMPLOYEE",
         holderUserId: transfer.toUserId,
@@ -78,6 +80,7 @@ export async function PATCH(req, { params }) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Approved transfer of ${transfer.asset.tag}`,
     entity: "Transfer",

@@ -5,11 +5,11 @@ import { validate, categoryUpdateSchema } from "@/lib/validation";
 import { logActivity } from "@/lib/activity";
 
 export async function GET(req, { params }) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { id } = await params;
-  const category = await prisma.assetCategory.findUnique({ where: { id } });
+  const category = await prisma.assetCategory.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!category) {
     return NextResponse.json({ error: "Category not found." }, { status: 404 });
   }
@@ -24,7 +24,7 @@ export async function PATCH(req, { params }) {
   const { data, error: validationError } = validate(categoryUpdateSchema, await req.json());
   if (validationError) return validationError;
 
-  const existing = await prisma.assetCategory.findUnique({ where: { id } });
+  const existing = await prisma.assetCategory.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!existing) {
     return NextResponse.json({ error: "Category not found." }, { status: 404 });
   }
@@ -32,6 +32,7 @@ export async function PATCH(req, { params }) {
   const category = await prisma.assetCategory.update({ where: { id }, data });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Updated asset category ${category.name}`,
     entity: "AssetCategory",

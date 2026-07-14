@@ -26,7 +26,7 @@ async function findOverlap(tx, { assetId, start, end, excludeId }) {
 
 // GET /api/bookings?assetId=...&status=...
 export async function GET(req) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -34,7 +34,7 @@ export async function GET(req) {
   const status = searchParams.get("status");
 
   const bookings = await prisma.booking.findMany({
-    where: { ...(assetId ? { assetId } : {}), ...(status ? { status } : {}) },
+    where: { organizationId: user.organizationId, ...(assetId ? { assetId } : {}), ...(status ? { status } : {}) },
     include: INCLUDE,
     orderBy: { start: "desc" },
   });
@@ -52,7 +52,7 @@ export async function POST(req) {
 
   try {
     const booking = await prisma.$transaction(async (tx) => {
-      const asset = await tx.asset.findUnique({ where: { id: data.assetId } });
+      const asset = await tx.asset.findFirst({ where: { id: data.assetId, organizationId: user.organizationId } });
       if (!asset) throw Object.assign(new Error("Asset not found."), { status: 404 });
       if (!asset.isBookable) {
         throw Object.assign(new Error("This asset isn't a shared/bookable resource."), { status: 400 });
@@ -68,6 +68,7 @@ export async function POST(req) {
 
       return tx.booking.create({
         data: {
+          organizationId: user.organizationId,
           assetId: data.assetId,
           bookedById: user.id,
           start: data.start,
@@ -79,6 +80,7 @@ export async function POST(req) {
     });
 
     await logActivity({
+      organizationId: user.organizationId,
       actorId: user.id,
       action: `Booked ${booking.asset.name} (${booking.asset.tag})`,
       entity: "Booking",

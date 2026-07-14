@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, ShieldAlert, Building2 } from "@/components/icons";
+import { Plus, ShieldAlert, Building2, Copy } from "@/components/icons";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -38,6 +38,7 @@ export default function SetupPage() {
   const [departments, setDepartments] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [organization, setOrganization] = useState(null);
 
   const canSetup = user && can(user.role, "orgSetup");
 
@@ -50,10 +51,12 @@ export default function SetupPage() {
       apiFetch("/api/departments"),
       apiFetch("/api/categories"),
       apiFetch("/api/employees"),
-    ]).then(([d, c, e]) => {
+      apiFetch("/api/organization"),
+    ]).then(([d, c, e, o]) => {
       setDepartments(d.departments);
       setCategories(c.categories);
       setEmployees(e.employees);
+      setOrganization(o.organization);
       setLoading(false);
     });
   }, [canSetup]);
@@ -84,6 +87,8 @@ export default function SetupPage() {
         description="Maintain the master data every other module depends on — departments, asset categories, and the employee directory."
       />
 
+      {organization && <OrganizationCodeCard organization={organization} />}
+
       <Tabs tabs={TABS} active={tab} onChange={setTab} className="mb-6" />
 
       {tab === "departments" && (
@@ -104,6 +109,37 @@ export default function SetupPage() {
         />
       )}
     </div>
+  );
+}
+
+/* --------------------------- Organization code ----------------------------- */
+function OrganizationCodeCard({ organization }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(organization.slug);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <Card hover={false} className="mb-6 flex items-center justify-between gap-3 border-black/[0.08] bg-black/[0.02] py-3">
+      <div className="flex items-start gap-2.5">
+        <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-black/40" strokeWidth={1.5} />
+        <p className="text-xs leading-relaxed text-black/50">
+          <span className="text-foreground">{organization.name}</span>&apos;s organization code —
+          share it with new teammates so they can join at signup instead of creating a
+          separate workspace.
+        </p>
+      </div>
+      <button
+        onClick={copy}
+        className="flex shrink-0 items-center gap-1.5 rounded-control border border-black/[0.08] bg-card px-3 py-1.5 font-mono text-xs text-foreground transition-colors hover:bg-black/[0.03]"
+      >
+        <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
+        {copied ? "Copied!" : organization.slug}
+      </button>
+    </Card>
   );
 }
 

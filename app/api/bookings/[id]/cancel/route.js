@@ -9,8 +9,8 @@ export async function POST(req, { params }) {
   if (error) return error;
 
   const { id } = await params;
-  const booking = await prisma.booking.findUnique({
-    where: { id },
+  const booking = await prisma.booking.findFirst({
+    where: { id, organizationId: user.organizationId },
     include: { asset: { select: { id: true, tag: true, name: true } } },
   });
   if (!booking) {
@@ -23,6 +23,7 @@ export async function POST(req, { params }) {
   const updated = await prisma.booking.update({ where: { id }, data: { status: "CANCELLED" } });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Cancelled booking for ${booking.asset.name} (${booking.asset.tag})`,
     entity: "Booking",

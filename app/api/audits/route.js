@@ -11,10 +11,11 @@ const LIST_INCLUDE = {
 
 // GET /api/audits — list cycles.
 export async function GET() {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const cycles = await prisma.auditCycle.findMany({
+    where: { organizationId: user.organizationId },
     include: LIST_INCLUDE,
     orderBy: { startDate: "desc" },
   });
@@ -32,8 +33,20 @@ export async function POST(req) {
   const { data, error: validationError } = validate(auditCycleCreateSchema, await req.json());
   if (validationError) return validationError;
 
+  const [auditorCount, assetCount] = await Promise.all([
+    prisma.user.count({ where: { id: { in: data.auditorIds }, organizationId: user.organizationId } }),
+    prisma.asset.count({ where: { id: { in: data.assetIds }, organizationId: user.organizationId } }),
+  ]);
+  if (auditorCount !== data.auditorIds.length) {
+    return NextResponse.json({ error: "One or more auditors are invalid." }, { status: 400 });
+  }
+  if (assetCount !== data.assetIds.length) {
+    return NextResponse.json({ error: "One or more assets are invalid." }, { status: 400 });
+  }
+
   const cycle = await prisma.auditCycle.create({
     data: {
+      organizationId: user.organizationId,
       name: data.name,
       scopeType: data.scopeType,
       scopeLabel: data.scopeLabel,
@@ -49,6 +62,7 @@ export async function POST(req) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Created audit cycle "${cycle.name}"`,
     entity: "Audit",

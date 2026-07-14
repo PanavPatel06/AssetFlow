@@ -12,7 +12,7 @@ const INCLUDE = {
 
 // GET /api/maintenance?assetId=...&status=...
 export async function GET(req) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -20,7 +20,7 @@ export async function GET(req) {
   const status = searchParams.get("status");
 
   const requests = await prisma.maintenanceRequest.findMany({
-    where: { ...(assetId ? { assetId } : {}), ...(status ? { status } : {}) },
+    where: { organizationId: user.organizationId, ...(assetId ? { assetId } : {}), ...(status ? { status } : {}) },
     include: INCLUDE,
     orderBy: { raisedOn: "desc" },
   });
@@ -37,13 +37,14 @@ export async function POST(req) {
   const { data, error: validationError } = validate(maintenanceCreateSchema, await req.json());
   if (validationError) return validationError;
 
-  const asset = await prisma.asset.findUnique({ where: { id: data.assetId } });
+  const asset = await prisma.asset.findFirst({ where: { id: data.assetId, organizationId: user.organizationId } });
   if (!asset) {
     return NextResponse.json({ error: "Asset not found." }, { status: 404 });
   }
 
   const request = await prisma.maintenanceRequest.create({
     data: {
+      organizationId: user.organizationId,
       assetId: data.assetId,
       raisedById: user.id,
       issue: data.issue,
@@ -54,6 +55,7 @@ export async function POST(req) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Raised maintenance request for ${asset.tag} (${asset.name})`,
     entity: "Maintenance",

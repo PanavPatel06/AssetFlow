@@ -22,6 +22,12 @@ async function main() {
   console.log("Seeding AssetFlow database...");
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
+  // --- Organization ("tenant") this scenario belongs to. A second, much
+  // smaller organization is seeded further down to demonstrate that its
+  // data never mixes with this one's. -------------------------------------
+  const acme = await prisma.organization.create({ data: { name: "Acme Inc", slug: "acme" } });
+  const organizationId = acme.id;
+
   // --- Pass 1: Departments (no head/parent yet, to avoid circular FKs) -----
   const deptSeed = [
     { key: "d1", name: "Engineering", status: "ACTIVE" },
@@ -33,7 +39,7 @@ async function main() {
   const dept = {};
   for (const dep of deptSeed) {
     dept[dep.key] = await prisma.department.create({
-      data: { name: dep.name, status: dep.status },
+      data: { organizationId, name: dep.name, status: dep.status },
     });
   }
 
@@ -54,6 +60,7 @@ async function main() {
   for (const u of userSeed) {
     user[u.key] = await prisma.user.create({
       data: {
+        organizationId,
         name: u.name,
         email: u.email,
         passwordHash,
@@ -83,7 +90,7 @@ async function main() {
   const cat = {};
   for (const c of catSeed) {
     cat[c.key] = await prisma.assetCategory.create({
-      data: { name: c.name, customFields: c.customFields },
+      data: { organizationId, name: c.name, customFields: c.customFields },
     });
   }
 
@@ -108,6 +115,7 @@ async function main() {
   for (const a of assetSeed) {
     asset[a.key] = await prisma.asset.create({
       data: {
+        organizationId,
         tag: a.tag,
         name: a.name,
         categoryId: cat[a.catKey].id,
@@ -138,6 +146,7 @@ async function main() {
   for (const al of allocationSeed) {
     await prisma.allocation.create({
       data: {
+        organizationId,
         assetId: asset[al.assetKey].id,
         holderType: al.holderType,
         holderUserId: al.holderType === "EMPLOYEE" ? user[al.holderKey].id : null,
@@ -161,6 +170,7 @@ async function main() {
   for (const t of transferSeed) {
     await prisma.transferRequest.create({
       data: {
+        organizationId,
         assetId: asset[t.assetKey].id,
         fromUserId: user[t.fromKey].id,
         toUserId: user[t.toKey].id,
@@ -186,6 +196,7 @@ async function main() {
   for (const b of bookingSeed) {
     await prisma.booking.create({
       data: {
+        organizationId,
         assetId: asset[b.assetKey].id,
         bookedById: user[b.bookedByKey].id,
         start: d(b.start),
@@ -207,6 +218,7 @@ async function main() {
   for (const m of maintenanceSeed) {
     await prisma.maintenanceRequest.create({
       data: {
+        organizationId,
         assetId: asset[m.assetKey].id,
         raisedById: user[m.raisedByKey].id,
         issue: m.issue,
@@ -222,6 +234,7 @@ async function main() {
   // --- Audit cycles + items --------------------------------------------------
   const au1 = await prisma.auditCycle.create({
     data: {
+      organizationId,
       name: "Q3 Facilities Audit",
       scopeType: "DEPARTMENT",
       scopeLabel: "Facilities",
@@ -233,6 +246,7 @@ async function main() {
   });
   const au2 = await prisma.auditCycle.create({
     data: {
+      organizationId,
       name: "Q2 HQ Floor 3 Audit",
       scopeType: "LOCATION",
       scopeLabel: "HQ · Floor 3",
@@ -297,6 +311,7 @@ async function main() {
   for (const l of activitySeed) {
     await prisma.activityLog.create({
       data: {
+        organizationId,
         actorId: user[l.actorKey].id,
         action: l.action,
         entity: l.entity,
@@ -305,8 +320,44 @@ async function main() {
     });
   }
 
+  // --- A second, much smaller organization ("tenant") ------------------------
+  // Proves the multi-tenant boundary actually holds: log in as its Admin and
+  // every screen should show only this data — none of Acme's — and vice versa.
+  const globex = await prisma.organization.create({ data: { name: "Globex Industries", slug: "globex" } });
+  const globexDept = await prisma.department.create({
+    data: { organizationId: globex.id, name: "Operations", status: "ACTIVE" },
+  });
+  const globexAdmin = await prisma.user.create({
+    data: {
+      organizationId: globex.id,
+      name: "Casey Morgan",
+      email: "casey@globex.example",
+      passwordHash,
+      role: "ADMIN",
+      title: "System Administrator",
+      departmentId: globexDept.id,
+    },
+  });
+  const globexCategory = await prisma.assetCategory.create({
+    data: { organizationId: globex.id, name: "Electronics", customFields: [] },
+  });
+  await prisma.asset.create({
+    data: {
+      organizationId: globex.id,
+      tag: "AF-0001", // same tag as Acme's first asset — proves tags are scoped per organization, not global
+      name: "ThinkPad T14",
+      categoryId: globexCategory.id,
+      condition: "Good",
+      location: "HQ",
+      isBookable: false,
+      status: "AVAILABLE",
+    },
+  });
+
   console.log("Seed complete.");
   console.log(`All seed users share the password: "${SEED_PASSWORD}"`);
+  console.log(`Organization "Acme Inc" (code: ${acme.slug}) — sign in as priya@acme.com`);
+  console.log(`Organization "Globex Industries" (code: ${globex.slug}) — sign in as ${globexAdmin.email}`);
 }
 
 main()

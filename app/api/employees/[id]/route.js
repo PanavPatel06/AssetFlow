@@ -16,11 +16,14 @@ const SAFE_SELECT = {
 };
 
 export async function GET(req, { params }) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { id } = await params;
-  const employee = await prisma.user.findUnique({ where: { id }, select: SAFE_SELECT });
+  const employee = await prisma.user.findFirst({
+    where: { id, organizationId: user.organizationId },
+    select: SAFE_SELECT,
+  });
   if (!employee) {
     return NextResponse.json({ error: "Employee not found." }, { status: 404 });
   }
@@ -37,21 +40,30 @@ export async function PATCH(req, { params }) {
   const { data, error: validationError } = validate(employeeUpdateSchema, await req.json());
   if (validationError) return validationError;
 
-  const existing = await prisma.user.findUnique({ where: { id } });
+  const existing = await prisma.user.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!existing) {
     return NextResponse.json({ error: "Employee not found." }, { status: 404 });
+  }
+
+  if (data.departmentId) {
+    const department = await prisma.department.findFirst({
+      where: { id: data.departmentId, organizationId: user.organizationId },
+    });
+    if (!department) return NextResponse.json({ error: "Invalid department." }, { status: 400 });
   }
 
   const employee = await prisma.user.update({ where: { id }, data, select: SAFE_SELECT });
 
   if (data.role && data.role !== existing.role) {
     await logActivity({
+      organizationId: user.organizationId,
       actorId: user.id,
       action: `Promoted ${employee.name} to ${ROLE_LABELS[data.role]}`,
       entity: "Employee",
     });
   } else {
     await logActivity({
+      organizationId: user.organizationId,
       actorId: user.id,
       action: `Updated employee ${employee.name}`,
       entity: "Employee",

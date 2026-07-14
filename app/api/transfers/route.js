@@ -14,7 +14,7 @@ const INCLUDE = {
 
 // GET /api/transfers?status=REQUESTED&assetId=...
 export async function GET(req) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -22,7 +22,7 @@ export async function GET(req) {
   const assetId = searchParams.get("assetId");
 
   const transfers = await prisma.transferRequest.findMany({
-    where: { ...(status ? { status } : {}), ...(assetId ? { assetId } : {}) },
+    where: { organizationId: user.organizationId, ...(status ? { status } : {}), ...(assetId ? { assetId } : {}) },
     include: INCLUDE,
     orderBy: { requestedOn: "desc" },
   });
@@ -40,7 +40,7 @@ export async function POST(req) {
   if (validationError) return validationError;
 
   const activeAllocation = await prisma.allocation.findFirst({
-    where: { assetId: data.assetId, status: "ACTIVE", holderType: "EMPLOYEE" },
+    where: { assetId: data.assetId, status: "ACTIVE", holderType: "EMPLOYEE", organizationId: user.organizationId },
     include: { asset: { select: { id: true, tag: true, name: true } } },
   });
   if (!activeAllocation) {
@@ -50,13 +50,14 @@ export async function POST(req) {
     );
   }
 
-  const toUser = await prisma.user.findUnique({ where: { id: data.toUserId } });
+  const toUser = await prisma.user.findFirst({ where: { id: data.toUserId, organizationId: user.organizationId } });
   if (!toUser) {
     return NextResponse.json({ error: "Target employee not found." }, { status: 400 });
   }
 
   const transfer = await prisma.transferRequest.create({
     data: {
+      organizationId: user.organizationId,
       assetId: data.assetId,
       fromUserId: activeAllocation.holderUserId,
       toUserId: data.toUserId,
@@ -66,6 +67,7 @@ export async function POST(req) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Requested transfer of ${activeAllocation.asset.tag}`,
     entity: "Transfer",

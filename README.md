@@ -9,10 +9,11 @@ repo) — refined against a more precisely measured version of the same spec (ex
 letter-spacing formula, per-section heading scale, and per-context type tokens).
 The full build plan is in `PLAN.md` (also local-only).
 
-> **Status: Phase 1 (Frontend), Phase 2 (Backend), and Phase 3 (Integration)
-> complete.** Every screen now reads and writes through the real REST API and
-> Auth.js session — `lib/mockData.js` is no longer imported anywhere. See
-> [`PLAN.md`](./PLAN.md).
+> **Status: Phase 1 (Frontend), Phase 2 (Backend), Phase 3 (Integration), and
+> Phase 4 (Multi-tenancy) complete.** Every screen reads and writes through
+> the real REST API and Auth.js session — `lib/mockData.js` is no longer
+> imported anywhere. A single deployment now serves many organizations, each
+> with fully isolated data. See [`PLAN.md`](./PLAN.md).
 
 ---
 
@@ -27,8 +28,15 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). You'll land on the **marketing
-landing page**. Click **Get started** to create a real account, or **Sign in** with
-a seeded user (e.g. `priya@acme.com` / `password123` for the Admin).
+landing page**. Click **Get started** to create a real account — either your own
+new organization, or join an existing one by its organization code — or **Sign in**
+with a seeded user. The seed creates two isolated organizations so you can see
+tenant separation for yourself:
+
+| Organization | Code | Admin login |
+|---|---|---|
+| Acme Inc | `acme` | `priya@acme.com` / `password123` |
+| Globex Industries | `globex` | `casey@globex.example` / `password123` |
 
 **Note:** this Next.js version renamed `middleware.js` to `proxy.js` — route
 protection lives in [`proxy.js`](./proxy.js) at the project root.
@@ -99,8 +107,8 @@ npm run db:migrate
 npm run db:seed
 ```
 
-All seeded users share the password **`password123`** (e.g. `priya@acme.com` /
-`password123` for the Admin).
+All seeded users share the password **`password123`** — see the two-organization
+table above.
 
 ### Prisma & DB scripts
 
@@ -126,8 +134,9 @@ the same `can()` permission helper the frontend already uses
 
 | Resource | Routes |
 |---|---|
-| Auth | `POST /api/auth/register` (signup, Employee-only) · `/api/auth/[...nextauth]` (Auth.js) |
-| Departments | `GET/POST /api/departments`, `GET/PATCH /api/departments/[id]` |
+| Auth | `POST /api/auth/register` (signup — creates a new organization as its Admin, or joins an existing one as an Employee) · `/api/auth/[...nextauth]` (Auth.js) |
+| Organization | `GET /api/organization` (the current user's org — name + shareable code) |
+| Departments | `GET/POST /api/departments`, `GET/PATCH /api/departments/[id]` — `GET` also accepts an unauthenticated `?organizationSlug=` for the signup form's "join" step |
 | Categories | `GET/POST /api/categories`, `GET/PATCH /api/categories/[id]` |
 | Employees | `GET /api/employees`, `GET/PATCH /api/employees/[id]` (role/status — the only place roles change) |
 | Assets | `GET/POST /api/assets` (search via `?q=&categoryId=&status=`), `GET/PATCH /api/assets/[id]` |
@@ -142,6 +151,15 @@ the same `can()` permission helper the frontend already uses
 
 ### Business rules enforced server-side
 
+- **Tenant isolation** — every table that matters is scoped by `organizationId`,
+  rooted in the session (never trusted from the request body). Every route
+  filters its queries and validates every referenced ID (asset, employee,
+  department, holder, auditor...) against the caller's own organization before
+  acting on it, so one organization's data can never be read, listed, or
+  linked to by another's. Asset tags (`AF-0001`...) are unique per organization,
+  not globally — two orgs can both have an `AF-0001`. `User.email` is the one
+  exception and stays globally unique (one email = one account = one org), so
+  login doesn't need an organization selector.
 - **No double-allocation** — allocating an already-actively-held asset returns
   `409` with the current holder, instead of silently succeeding.
 - **No overlapping bookings** — same resource, overlapping times → `409`;
@@ -183,9 +201,10 @@ exactly where the old mock-only UI used to simulate them.
 ```
 app/
   page.js            Marketing landing page (public entry at /)
-  (auth)/            Login, signup, forgot-password (branded auth layout)
+  (auth)/            Login, signup (create/join an organization), forgot-password
   (app)/             Authenticated screens (sidebar + top bar shell)
   api/               REST API route handlers (backend)
+  api/organization/  Current user's organization (name + shareable code)
   layout.js          Root layout — fonts, SessionProvider, global styles
   globals.css        Design tokens (colors, radius, fonts, tracking) + motion
 proxy.js             Route protection (this Next.js version's renamed middleware.js)
@@ -210,8 +229,8 @@ lib/
   validation.js       Zod schemas for every API resource (backend)
   activity.js         logActivity()/notify() helpers (backend)
 prisma/
-  schema.prisma       Full data model (13 entities, enums matching lib/statuses.js)
-  seed.mjs            Seeds data mirroring lib/mockData.js 1:1
+  schema.prisma       Full data model (Organization + 13 tenant-scoped entities, enums matching lib/statuses.js)
+  seed.mjs            Seeds two isolated organizations (Acme, mirroring lib/mockData.js 1:1, + a small Globex)
   migrations/         Prisma migration history
 ```
 
@@ -222,6 +241,9 @@ prisma/
 - **Phase 1 — Frontend** ✅ — landing page + all app screens on mock data.
 - **Phase 2 — Backend** ✅ — PostgreSQL + Prisma, REST API, Auth.js, business rules.
 - **Phase 3 — Integration** ✅ — every screen wired to the real API + Auth.js session.
+- **Phase 4 — Multi-tenancy** ✅ — one deployment serves many organizations;
+  every table, route, and query is scoped by `organizationId`; signup can
+  create a new organization or join an existing one by its shareable code.
 
 ## Scripts
 
@@ -233,3 +255,41 @@ npm run lint     # eslint
 ```
 
 See [Backend (Phase 2)](#backend-phase-2) above for the `db:*` scripts.
+
+---
+
+## Deployment (Vercel)
+
+This app needs a real Node.js server at runtime — Prisma + Postgres, Auth.js
+JWT sessions, and [`proxy.js`](./proxy.js) all execute server-side — so it
+can't be a static export. Vercel (built by the Next.js team) handles this
+with zero extra config.
+
+1. **Push to GitHub** and import the repo at [vercel.com/new](https://vercel.com/new).
+2. **Provision Postgres** — [Neon](https://neon.tech) or
+   [Supabase](https://supabase.com) both work well with Prisma; grab the
+   connection string.
+3. **Set environment variables** in Vercel → Project → Settings →
+   Environment Variables:
+   - `DATABASE_URL` — the production Postgres connection string
+   - `AUTH_SECRET` — a **new** secret (`openssl rand -base64 32`), never
+     reused from local `.env`
+   - `AUTH_URL` — your production URL once known, e.g. `https://assetflow.vercel.app`
+4. **Apply migrations** against the production database before it serves
+   traffic:
+   ```bash
+   DATABASE_URL="<production-url>" npx prisma migrate deploy
+   ```
+5. **Seed (optional)** — only if you want a demo organization live:
+   ```bash
+   DATABASE_URL="<production-url>" node prisma/seed.mjs
+   ```
+   Otherwise leave the database empty and let your first real user sign up
+   via "Create a workspace" on `/signup` — they become that organization's
+   Admin.
+6. **Deploy** — `vercel --prod`, or just push to the connected GitHub branch.
+
+Because every table, route, and query is scoped by `organizationId`
+([see Business rules](#business-rules-enforced-server-side)), this one
+deployment safely serves every organization that signs up — no per-tenant
+infrastructure needed.

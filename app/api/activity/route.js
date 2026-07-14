@@ -6,10 +6,11 @@ import { requireUser } from "@/lib/apiAuth";
 // visible to every authenticated role (per the brief: "keep every role
 // informed"), capped at the most recent 200 entries.
 export async function GET() {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const log = await prisma.activityLog.findMany({
+    where: { organizationId: user.organizationId },
     include: { actor: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
     take: 200,

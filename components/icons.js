@@ -19,6 +19,7 @@ export {
   CheckCircle as CheckCircle2,
   NavArrowDown as ChevronDown,
   ClipboardCheck,
+  Copy,
   ViewGrid as LayoutDashboard,
   ReportColumns as BarChart3,
   Download,

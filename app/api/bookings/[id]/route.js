@@ -11,11 +11,11 @@ const INCLUDE = {
 };
 
 export async function GET(req, { params }) {
-  const { error } = await requireUser();
+  const { user, error } = await requireUser();
   if (error) return error;
 
   const { id } = await params;
-  const booking = await prisma.booking.findUnique({ where: { id }, include: INCLUDE });
+  const booking = await prisma.booking.findFirst({ where: { id, organizationId: user.organizationId }, include: INCLUDE });
   if (!booking) {
     return NextResponse.json({ error: "Booking not found." }, { status: 404 });
   }
@@ -36,7 +36,7 @@ export async function PATCH(req, { params }) {
   const { data, error: validationError } = validate(rescheduleSchema, await req.json());
   if (validationError) return validationError;
 
-  const existing = await prisma.booking.findUnique({ where: { id } });
+  const existing = await prisma.booking.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!existing) {
     return NextResponse.json({ error: "Booking not found." }, { status: 404 });
   }
@@ -67,6 +67,7 @@ export async function PATCH(req, { params }) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Rescheduled booking for ${booking.asset.name} (${booking.asset.tag})`,
     entity: "Booking",

@@ -18,7 +18,7 @@ export async function PATCH(req, { params }) {
     where: { id: itemId },
     include: { cycle: true, asset: { select: { id: true, tag: true, name: true } } },
   });
-  if (!item || item.cycleId !== id) {
+  if (!item || item.cycleId !== id || item.cycle.organizationId !== user.organizationId) {
     return NextResponse.json({ error: "Audit item not found." }, { status: 404 });
   }
   if (item.cycle.status === "CLOSED") {
@@ -31,6 +31,7 @@ export async function PATCH(req, { params }) {
   });
 
   await logActivity({
+    organizationId: user.organizationId,
     actorId: user.id,
     action: `Marked ${item.asset.tag} as ${data.status} in "${item.cycle.name}"`,
     entity: "Audit",
