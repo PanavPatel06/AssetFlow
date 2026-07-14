@@ -30,13 +30,9 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000). You'll land on the **marketing
 landing page**. Click **Get started** to create a real account — either your own
 new organization, or join an existing one by its organization code — or **Sign in**
-with a seeded user. The seed creates two isolated organizations so you can see
-tenant separation for yourself:
-
-| Organization | Code | Admin login |
-|---|---|---|
-| Acme Inc | `acme` | `priya@acme.com` / `password123` |
-| Globex Industries | `globex` | `casey@globex.example` / `password123` |
+with a seeded user (e.g. `priya@acme.com` / `password123` for the Acme Admin —
+see [Test credentials](#test-credentials) below for the full list, including a
+second, isolated organization).
 
 **Note:** this Next.js version renamed `middleware.js` to `proxy.js` — route
 protection lives in [`proxy.js`](./proxy.js) at the project root.
@@ -66,6 +62,41 @@ feature grid, roles, workflow, and CTA.
 The key business rules from the brief are demonstrated in the UI:
 double-allocation is blocked (offers a transfer instead), overlapping bookings are
 rejected, maintenance flows through approval, and audit cycles flag discrepancies.
+
+---
+
+## Test credentials
+
+Every seeded account shares the password **`password123`**. Two isolated
+organizations are seeded — use them to test both role-based permissions
+*and* tenant isolation (sign in to each in a separate browser / incognito
+window and confirm neither ever shows the other's data).
+
+**Acme Inc** — organization code `acme` — the full scenario, one user per role:
+
+| Name | Email | Role | Department | Notes |
+|---|---|---|---|---|
+| Priya Sharma | `priya@acme.com` | Admin | Operations | full access, incl. Organization Setup |
+| Ananya Iyer | `ananya@acme.com` | Asset Manager | Operations | register/allocate assets, approve maintenance & audits |
+| Raj Patel | `raj@acme.com` | Department Head | Engineering | allocate within scope, approve transfers |
+| Vikram Singh | `vikram@acme.com` | Department Head | Facilities | same, different department |
+| Meera Nair | `meera@acme.com` | Department Head | Finance | same, different department |
+| Arjun Rao | `arjun@acme.com` | Employee | Engineering | baseline access — book resources, raise maintenance |
+| Sara Khan | `sara@acme.com` | Employee | Engineering | holds AF-0002; has a pending transfer request against them |
+| Dev Mehta | `dev@acme.com` | Employee | Operations | holds AF-0009 |
+| Nisha Gupta | `nisha@acme.com` | Employee | Facilities | auditor on the open Q3 Facilities audit cycle |
+| Karan Joshi | `karan@acme.com` | Employee | Finance | seeded **Inactive** — use to test the deactivated-account path |
+
+**Globex Industries** — organization code `globex` — a minimal second tenant:
+
+| Name | Email | Role | Notes |
+|---|---|---|---|
+| Casey Morgan | `casey@globex.example` | Admin | one department, one category, one asset (`AF-0001` — deliberately the same tag as Acme's `AF-0001`, to prove tags are scoped per organization, not global) |
+
+To test the **signup flow** itself rather than the seed data: visit `/signup`
+and either "Create a workspace" (you become a brand-new org's Admin) or "Join a
+workspace" using organization code `acme` or `globex` (you join as an Employee —
+an Admin then promotes you from the Employee Directory in Organization Setup).
 
 ---
 
@@ -107,8 +138,9 @@ npm run db:migrate
 npm run db:seed
 ```
 
-All seeded users share the password **`password123`** — see the two-organization
-table above.
+All seeded users share the password **`password123`** — see
+[Test credentials](#test-credentials) for the full list across both seeded
+organizations.
 
 ### Prisma & DB scripts
 
