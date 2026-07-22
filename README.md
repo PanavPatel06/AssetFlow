@@ -1,327 +1,231 @@
 # AssetFlow
 
-Enterprise Asset & Resource Management System — track, allocate, and maintain
-physical assets and shared resources through a centralized, role-based platform.
+**Multi-tenant asset & resource management platform.** Organizations track their
+physical assets, allocate them to people and departments, book shared resources,
+run maintenance approvals, and close out audit cycles — all from one deployment,
+with every organization's data fully isolated from every other's.
 
-Built with **Next.js (App Router) + JavaScript + Tailwind CSS v4**, following the
-"quiet luxury" design language in `DESIGN.md` (kept locally, not tracked in this
-repo) — refined against a more precisely measured version of the same spec (exact
-letter-spacing formula, per-section heading scale, and per-context type tokens).
-The full build plan is in `PLAN.md` (also local-only).
+**Live:** [asset-flow-tan-beta.vercel.app](https://asset-flow-tan-beta.vercel.app) —
+sign in with a demo account below, or create your own workspace.
 
-> **Status: Phase 1 (Frontend), Phase 2 (Backend), Phase 3 (Integration), and
-> Phase 4 (Multi-tenancy) complete.** Every screen reads and writes through
-> the real REST API and Auth.js session — `lib/mockData.js` is no longer
-> imported anywhere. A single deployment now serves many organizations, each
-> with fully isolated data. See [`PLAN.md`](./PLAN.md).
+`Next.js 16 (App Router)` · `React 19` · `PostgreSQL` · `Prisma` · `Auth.js v5` · `Tailwind CSS v4` · `Recharts` · `Zod`
 
 ---
 
-## Getting started
+## The problem
 
-```bash
-npm install
-# One-time backend setup — see "Backend (Phase 2)" below for details.
-npm run db:migrate
-npm run db:seed
-npm run dev
-```
+Most companies track assets in a spreadsheet. That works until two people claim
+the same laptop, someone books a conference room that's already taken, a
+maintenance request bypasses approval, or nobody can say who had an asset six
+months ago. Those are all concurrency and workflow problems, and a spreadsheet
+has no way to enforce them.
 
-Open [http://localhost:3000](http://localhost:3000). You'll land on the **marketing
-landing page**. Click **Get started** to create a real account — either your own
-new organization, or join an existing one by its organization code — or **Sign in**
-with a seeded user (e.g. `priya@acme.com` / `password123` for the Acme Admin —
-see [Test credentials](#test-credentials) below for the full list, including a
-second, isolated organization).
+AssetFlow encodes the rules in the database and the API layer, so they hold no
+matter which screen (or which client) tries to break them.
 
-**Note:** this Next.js version renamed `middleware.js` to `proxy.js` — route
-protection lives in [`proxy.js`](./proxy.js) at the project root.
+## Feature tour
 
----
-
-## What's built
-
-**Landing page** (`/`) — floating glass nav, animated hero with a product preview,
-feature grid, roles, workflow, and CTA.
-
-**The 10 app screens:**
-
-| # | Screen | Route |
+| Screen | Route | What it does |
 |---|---|---|
-| 1 | Login / Signup / Forgot password | `/login`, `/signup`, `/forgot-password` |
-| 2 | Dashboard (KPIs, overdue vs upcoming, activity) | `/dashboard` |
-| 3 | Organization Setup (Admin — 3 tabs) | `/setup` |
-| 4 | Asset Directory + registration + detail/history | `/assets`, `/assets/new`, `/assets/[id]` |
-| 5 | Allocation & Transfer (conflict + transfer + return) | `/allocations` |
-| 6 | Resource Booking (drag/resize calendar + overlap validation) | `/bookings` |
-| 7 | Maintenance (approval workflow) | `/maintenance` |
-| 8 | Asset Audit (cycles, mark items, discrepancies) | `/audits` |
-| 9 | Reports & Analytics (charts, heatmap, CSV export) | `/reports` |
-| 10 | Activity Logs & Notifications | `/activity` |
+| Landing | `/` | Public marketing page — glass nav, animated hero, feature grid |
+| Auth | `/login`, `/signup` | Create a workspace (become its Admin) or join one by org code |
+| Dashboard | `/dashboard` | KPI tiles, overdue vs. upcoming returns, recent activity feed |
+| Organization Setup | `/setup` | Admin-only — departments, asset categories, employee directory & role management |
+| Asset Directory | `/assets` | Search/filter by tag, category, status; registration form; per-asset detail + full history |
+| Allocation & Transfer | `/allocations` | Allocate, return, and transfer assets with approval |
+| Resource Booking | `/bookings` | Drag/resize timeline calendar with live overlap validation |
+| Maintenance | `/maintenance` | Request → approve → assign technician → resolve, as a kanban board |
+| Asset Audit | `/audits` | Open a cycle, mark items verified/missing/damaged, auto-generate a discrepancy report |
+| Reports | `/reports` | Utilization by department, maintenance frequency, booking heatmap, CSV export |
+| Activity & Notifications | `/activity` | Filterable audit trail + unread notification badge |
 
-The key business rules from the brief are demonstrated in the UI:
-double-allocation is blocked (offers a transfer instead), overlapping bookings are
-rejected, maintenance flows through approval, and audit cycles flag discrepancies.
+## Engineering highlights
 
----
+The parts of this build that were actually interesting to solve:
 
-## Test credentials
+**Multi-tenancy that doesn't leak.** Every tenant-scoped table carries an
+`organizationId` that is read from the signed session, never from the request
+body. Each route filters its own queries *and* re-validates every referenced ID
+(asset, employee, department, holder, auditor) against the caller's organization
+before acting on it — so a hand-crafted request with another org's asset ID gets
+a 404, not a cross-tenant write. Asset tags are unique *per organization* via a
+composite constraint, so two orgs can both own an `AF-0001`. `User.email` stays
+globally unique so login needs no tenant selector.
 
-Every seeded account shares the password **`password123`**. Two isolated
-organizations are seeded — use them to test both role-based permissions
-*and* tenant isolation (sign in to each in a separate browser / incognito
-window and confirm neither ever shows the other's data).
+**Conflict detection as a real constraint, not a UI check.** Allocating an
+already-held asset returns `409` with the current holder attached, so the UI can
+offer a transfer instead of silently double-booking. Overlapping bookings on the
+same resource return `409` too — with an interval comparison that deliberately
+allows a booking starting exactly when another ends.
 
-**Acme Inc** — organization code `acme` — the full scenario, one user per role:
+**Maintenance is a strict state machine.** Pending → Approved/Rejected →
+Technician Assigned → In Progress → Resolved, with each transition valid only
+from its specific predecessor. Approval flips the asset to *Under Maintenance*;
+resolution restores its **previous** state — back to `Allocated` or `Reserved`
+if the asset is still actively held, rather than blindly resetting to
+`Available`.
 
-| Name | Email | Role | Department | Notes |
-|---|---|---|---|---|
-| Priya Sharma | `priya@acme.com` | Admin | Operations | full access, incl. Organization Setup |
-| Ananya Iyer | `ananya@acme.com` | Asset Manager | Operations | register/allocate assets, approve maintenance & audits |
-| Raj Patel | `raj@acme.com` | Department Head | Engineering | allocate within scope, approve transfers |
-| Vikram Singh | `vikram@acme.com` | Department Head | Facilities | same, different department |
-| Meera Nair | `meera@acme.com` | Department Head | Finance | same, different department |
-| Arjun Rao | `arjun@acme.com` | Employee | Engineering | baseline access — book resources, raise maintenance |
-| Sara Khan | `sara@acme.com` | Employee | Engineering | holds AF-0002; has a pending transfer request against them |
-| Dev Mehta | `dev@acme.com` | Employee | Operations | holds AF-0009 |
-| Nisha Gupta | `nisha@acme.com` | Employee | Facilities | auditor on the open Q3 Facilities audit cycle |
-| Karan Joshi | `karan@acme.com` | Employee | Finance | seeded **Inactive** — use to test the deactivated-account path |
+**Atomic reallocation.** Approving a transfer closes the outgoing allocation and
+opens the incoming one inside a single Prisma transaction, so the asset's
+ownership history can never show a gap or an overlap.
 
-**Globex Industries** — organization code `globex` — a minimal second tenant:
+**One permission table, two consumers.** `lib/roles.js` defines four roles and
+eight capabilities. The React app imports it to hide nav items and disable
+buttons; the API routes import the same `can()` helper to reject the request.
+Authorization is defined once — the UI and the server cannot drift apart.
 
-| Name | Email | Role | Notes |
-|---|---|---|---|
-| Casey Morgan | `casey@globex.example` | Admin | one department, one category, one asset (`AF-0001` — deliberately the same tag as Acme's `AF-0001`, to prove tags are scoped per organization, not global) |
+**Optimistic UI with server reconciliation.** The booking timeline commits
+drag/resize moves locally for a snappy feel, then persists via `PATCH`. A `409`
+from the overlap check rolls the block back to its last known-good position.
 
-To test the **signup flow** itself rather than the seed data: visit `/signup`
-and either "Create a workspace" (you become a brand-new org's Admin) or "Join a
-workspace" using organization code `acme` or `globex` (you join as an Employee —
-an Admin then promotes you from the Employee Directory in Organization Setup).
+**Serverless-aware data layer.** Deployed on Vercel with split
+`DATABASE_URL` (pooled) and `DIRECT_URL` (session-mode) connection strings —
+the pooled endpoint for runtime, the direct one for `prisma migrate deploy`,
+which a transaction-mode pooler can't serve.
 
----
+## Architecture
 
-## Design & libraries
-
-- **Fonts:** Geist (UI), Geist Mono (code), IBM Plex Sans 300 (display headings),
-  Courier Prime (logo) — via `next/font`.
-- **Icons:** [Iconoir](https://iconoir.com) — clean thin-line set, re-exported
-  through [`components/icons.js`](./components/icons.js) so the whole app pulls from
-  one file (swapping icon libraries is a one-file change).
-- **Charts:** Recharts (Reports screen).
-- **Type spacing:** headings use tight tracking; body copy uses a subtle `0.7px`
-  — both are single CSS variables (`--tracking-heading`, `--tracking-base`) in
-  [`globals.css`](./app/globals.css).
-- **Motion:** custom scroll-reveal (`Reveal`), word-by-word blur-in headings
-  (`BlurInHeading`), and animated `<canvas>` pixel glyphs (`PixelGlyph`).
-
----
-
-## Backend (Phase 2)
-
-A full REST API lives under `app/api/`, backed by **PostgreSQL + Prisma** and
-**Auth.js (NextAuth v5)** for Credentials + JWT-session authentication. Every
-screen in the app (see "Integration (Phase 3)" below) reads and writes through
-this API.
-
-### One-time setup
-
-```bash
-# 1. Create a local Postgres database (adjust to your own Postgres if needed)
-createdb assetflow_app
-
-# 2. Add a .env file at the project root:
-#    DATABASE_URL="postgresql://<user>@localhost:5432/assetflow_app?schema=public"
-#    AUTH_SECRET="<any long random string>"   # e.g. `openssl rand -base64 32`
-
-# 3. Apply the schema and seed sample data (mirrors lib/mockData.js 1:1)
-npm run db:migrate
-npm run db:seed
+```
+Browser ──► Next.js App Router (React 19 client components)
+              │  lib/apiClient.js — shared fetch wrapper
+              ▼
+            app/api/* — 30 REST route handlers
+              │  requireUser() / requireCapability()  ← session + RBAC guard
+              │  Zod schemas                          ← input validation
+              │  lib/roles.js can()                   ← same rules as the UI
+              ▼
+            Prisma ORM ──► PostgreSQL
+                            14 models, 13 enums, org-scoped throughout
 ```
 
-All seeded users share the password **`password123`** — see
-[Test credentials](#test-credentials) for the full list across both seeded
-organizations.
+Route protection lives in [`proxy.js`](./proxy.js) at the project root — this
+Next.js version renamed `middleware.js` to `proxy.js`. Signed-out visitors
+hitting any authenticated route are redirected to `/login`.
 
-### Prisma & DB scripts
-
-```bash
-npm run db:migrate   # create/apply a migration from schema.prisma
-npm run db:seed       # (re-)run prisma/seed.mjs
-npm run db:reset      # ⚠️ drops and recreates the DB, then reseeds
-npm run db:studio     # Prisma Studio — browse/edit data in a GUI
-npm run db:generate   # regenerate the Prisma Client after a schema change
-```
-
-> Pinned to **Prisma 6.x** deliberately — Prisma 7 removed the simple
-> `datasource { url = env("DATABASE_URL") }` + `new PrismaClient()` pattern in
-> favor of a driver-adapter model, which adds real complexity for no benefit
-> at this project's scale.
+Roughly 7,000 lines across 65 source files.
 
 ### API surface
 
-Every route requires an authenticated session (via `next-auth`'s Credentials
-provider) except signup; write actions are additionally gated by role using
-the same `can()` permission helper the frontend already uses
-(`lib/roles.js`), so authorization rules are defined once, in one place.
+Every route requires an authenticated session except signup; writes are
+additionally gated by role.
 
 | Resource | Routes |
 |---|---|
-| Auth | `POST /api/auth/register` (signup — creates a new organization as its Admin, or joins an existing one as an Employee) · `/api/auth/[...nextauth]` (Auth.js) |
-| Organization | `GET /api/organization` (the current user's org — name + shareable code) |
-| Departments | `GET/POST /api/departments`, `GET/PATCH /api/departments/[id]` — `GET` also accepts an unauthenticated `?organizationSlug=` for the signup form's "join" step |
+| Auth | `POST /api/auth/register` · `/api/auth/[...nextauth]` |
+| Organization | `GET /api/organization` |
+| Departments | `GET/POST /api/departments`, `GET/PATCH /api/departments/[id]` |
 | Categories | `GET/POST /api/categories`, `GET/PATCH /api/categories/[id]` |
-| Employees | `GET /api/employees`, `GET/PATCH /api/employees/[id]` (role/status — the only place roles change) |
-| Assets | `GET/POST /api/assets` (search via `?q=&categoryId=&status=`), `GET/PATCH /api/assets/[id]` |
+| Employees | `GET /api/employees`, `GET/PATCH /api/employees/[id]` |
+| Assets | `GET/POST /api/assets` (`?q=&categoryId=&status=`), `GET/PATCH /api/assets/[id]` |
 | Allocations | `GET/POST /api/allocations`, `GET /api/allocations/[id]`, `POST /api/allocations/[id]/return` |
-| Transfers | `GET/POST /api/transfers`, `PATCH /api/transfers/[id]` (approve/reject) |
-| Bookings | `GET/POST /api/bookings`, `GET/PATCH /api/bookings/[id]` (reschedule), `POST /api/bookings/[id]/cancel` |
-| Maintenance | `GET/POST /api/maintenance`, `GET/PATCH /api/maintenance/[id]` (workflow actions) |
+| Transfers | `GET/POST /api/transfers`, `PATCH /api/transfers/[id]` |
+| Bookings | `GET/POST /api/bookings`, `GET/PATCH /api/bookings/[id]`, `POST /api/bookings/[id]/cancel` |
+| Maintenance | `GET/POST /api/maintenance`, `GET/PATCH /api/maintenance/[id]` |
 | Audits | `GET/POST /api/audits`, `GET /api/audits/[id]`, `POST /api/audits/[id]/close`, `PATCH /api/audits/[id]/items/[itemId]` |
 | Notifications | `GET /api/notifications`, `PATCH /api/notifications/[id]`, `POST /api/notifications/mark-all-read` |
-| Activity log | `GET /api/activity` |
-| Dashboard | `GET /api/dashboard` (KPI + overdue/upcoming + recent-activity aggregates) |
+| Activity | `GET /api/activity` |
+| Dashboard | `GET /api/dashboard` |
 
-### Business rules enforced server-side
+### Data model
 
-- **Tenant isolation** — every table that matters is scoped by `organizationId`,
-  rooted in the session (never trusted from the request body). Every route
-  filters its queries and validates every referenced ID (asset, employee,
-  department, holder, auditor...) against the caller's own organization before
-  acting on it, so one organization's data can never be read, listed, or
-  linked to by another's. Asset tags (`AF-0001`...) are unique per organization,
-  not globally — two orgs can both have an `AF-0001`. `User.email` is the one
-  exception and stays globally unique (one email = one account = one org), so
-  login doesn't need an organization selector.
-- **No double-allocation** — allocating an already-actively-held asset returns
-  `409` with the current holder, instead of silently succeeding.
-- **No overlapping bookings** — same resource, overlapping times → `409`;
-  a booking starting exactly when another ends is allowed (adjacent, not
-  overlapping) — matches the brief's exact example.
-- **Maintenance is a strict state machine** — Pending → Approved/Rejected →
-  Technician Assigned → In Progress → Resolved; each action is only valid
-  from its specific preceding state. Asset flips to Under Maintenance on
-  approval and back on resolution — correctly restoring `Allocated`/`Reserved`
-  rather than blindly `Available` if the asset is still actively held.
-- **Transfer approval reallocates atomically** — the old allocation is closed
-  out and a new one opened in the same transaction, so history stays accurate.
-- **Closing an audit cycle locks it** — further item edits are rejected, and
-  any item confirmed `MISSING` flips its asset to `Lost`.
+`Organization` plus 13 tenant-scoped entities: `User`, `Department`,
+`AssetCategory`, `Asset`, `Allocation`, `TransferRequest`, `Booking`,
+`MaintenanceRequest`, `AuditCycle`, `AuditItem`, `Notification`, `ActivityLog`.
+All status values are Postgres enums generated from the same vocabulary the
+frontend uses in `lib/statuses.js`.
 
-## Integration (Phase 3)
-
-Every screen is a client component that fetches from `app/api/*` via a small
-shared wrapper (`lib/apiClient.js`) instead of importing `lib/mockData.js`.
-Fake `setState`-only mutations were replaced with real API calls; conflict
-responses (`409` double-allocation / overlapping booking) surface inline
-exactly where the old mock-only UI used to simulate them.
-
-- **Auth** — `lib/currentUser.js` now wraps Auth.js's `useSession()`; the
-  Phase-1 role switcher is gone. [`proxy.js`](./proxy.js) (this Next.js
-  version's renamed `middleware.js`) protects every authenticated route,
-  redirecting signed-out visitors to `/login`.
-- **Notifications** — `lib/notifications.js` is a small shared provider (one
-  fetch of `/api/notifications`, mounted once in `AppShell`) so the top-bar
-  unread badge and the Activity screen can never drift out of sync.
-- **Bookings** — the drag/resize timeline still commits optimistically for a
-  snappy feel, then persists via `PATCH /api/bookings/[id]`; a `409` reverts
-  the block to its last known-good position.
-- Not in scope: file uploads (asset photos stay a decorative drop-zone) and
-  the "forgot password" flow (no email infra).
-
-## Project structure
-
-```
-app/
-  page.js            Marketing landing page (public entry at /)
-  (auth)/            Login, signup (create/join an organization), forgot-password
-  (app)/             Authenticated screens (sidebar + top bar shell)
-  api/               REST API route handlers (backend)
-  api/organization/  Current user's organization (name + shareable code)
-  layout.js          Root layout — fonts, SessionProvider, global styles
-  globals.css        Design tokens (colors, radius, fonts, tracking) + motion
-proxy.js             Route protection (this Next.js version's renamed middleware.js)
-components/
-  icons.js           Central icon set (Iconoir, aliased to friendly names)
-  ui/                Button, Card, Table, Modal, Tabs, StatusPill, form fields, …
-  motion/            BlurInHeading, Reveal, PixelGlyph (canvas)
-  shell/             Sidebar, TopBar, AppShell
-  marketing/         LandingNav (landing-page nav)
-lib/
-  mockData.js        No longer imported anywhere — kept only as a data reference
-  roles.js           Roles + permission helpers (shared by frontend AND the API)
-  statuses.js        Status → label/colour maps
-  format.js          Date/currency helpers
-  nav.js             Sidebar navigation config
-  currentUser.js     useCurrentUser() — thin wrapper around Auth.js's useSession()
-  apiClient.js       apiFetch() — shared fetch wrapper for every screen
-  notifications.js   Shared notifications provider (TopBar badge + Activity screen)
-  prisma.js          Prisma Client singleton (backend)
-  auth.js            Auth.js (NextAuth v5) config — Credentials + JWT (backend)
-  apiAuth.js          requireUser()/requireCapability() route guards (backend)
-  validation.js       Zod schemas for every API resource (backend)
-  activity.js         logActivity()/notify() helpers (backend)
-prisma/
-  schema.prisma       Full data model (Organization + 13 tenant-scoped entities, enums matching lib/statuses.js)
-  seed.mjs            Seeds two isolated organizations (Acme, mirroring lib/mockData.js 1:1, + a small Globex)
-  migrations/         Prisma migration history
-```
-
----
-
-## Roadmap
-
-- **Phase 1 — Frontend** ✅ — landing page + all app screens on mock data.
-- **Phase 2 — Backend** ✅ — PostgreSQL + Prisma, REST API, Auth.js, business rules.
-- **Phase 3 — Integration** ✅ — every screen wired to the real API + Auth.js session.
-- **Phase 4 — Multi-tenancy** ✅ — one deployment serves many organizations;
-  every table, route, and query is scoped by `organizationId`; signup can
-  create a new organization or join an existing one by its shareable code.
-
-## Scripts
+## Running locally
 
 ```bash
-npm run dev      # start the dev server
-npm run build    # production build
-npm run start    # serve the production build
-npm run lint     # eslint
+npm install
+createdb assetflow_app
 ```
 
-See [Backend (Phase 2)](#backend-phase-2) above for the `db:*` scripts.
+Add a `.env` at the project root:
 
----
+```
+DATABASE_URL="postgresql://<user>@localhost:5432/assetflow_app?schema=public"
+AUTH_SECRET="<any long random string>"   # openssl rand -base64 32
+```
 
-## Deployment (Vercel)
+Then:
 
-This app needs a real Node.js server at runtime — Prisma + Postgres, Auth.js
-JWT sessions, and [`proxy.js`](./proxy.js) all execute server-side — so it
-can't be a static export. Vercel (built by the Next.js team) handles this
-with zero extra config.
+```bash
+npm run db:migrate   # apply the schema
+npm run db:seed      # seed two isolated demo organizations
+npm run dev
+```
 
-1. **Push to GitHub** and import the repo at [vercel.com/new](https://vercel.com/new).
-2. **Provision Postgres** — [Neon](https://neon.tech) or
-   [Supabase](https://supabase.com) both work well with Prisma; grab the
-   connection string.
-3. **Set environment variables** in Vercel → Project → Settings →
-   Environment Variables:
-   - `DATABASE_URL` — the production Postgres connection string
-   - `AUTH_SECRET` — a **new** secret (`openssl rand -base64 32`), never
-     reused from local `.env`
-   - `AUTH_URL` — your production URL once known, e.g. `https://assetflow.vercel.app`
-4. **Apply migrations** against the production database before it serves
-   traffic:
+Open [localhost:3000](http://localhost:3000).
+
+**Scripts:** `dev` · `build` · `start` · `lint` · `db:migrate` · `db:seed` ·
+`db:reset` · `db:studio` · `db:generate`
+
+> Pinned to Prisma 6.x deliberately — Prisma 7 replaced the
+> `datasource { url = env(...) }` + `new PrismaClient()` pattern with a
+> driver-adapter model that adds real complexity for no benefit at this scale.
+
+## Demo accounts
+
+Every seeded account uses the password **`password123`**. Two isolated
+organizations are seeded — sign into each in separate browser profiles to
+verify neither can ever see the other's data.
+
+**Acme Inc** (org code `acme`) — one user per role:
+
+| Email | Role | Department | Notes |
+|---|---|---|---|
+| `priya@acme.com` | Admin | Operations | full access, incl. Organization Setup |
+| `ananya@acme.com` | Asset Manager | Operations | register/allocate, approve maintenance & audits |
+| `raj@acme.com` | Department Head | Engineering | allocate in scope, approve transfers |
+| `vikram@acme.com` | Department Head | Facilities | same, different department |
+| `meera@acme.com` | Department Head | Finance | same, different department |
+| `arjun@acme.com` | Employee | Engineering | baseline access |
+| `sara@acme.com` | Employee | Engineering | holds AF-0002, has a pending transfer against them |
+| `dev@acme.com` | Employee | Operations | holds AF-0009 |
+| `nisha@acme.com` | Employee | Facilities | auditor on the open Q3 Facilities cycle |
+| `karan@acme.com` | Employee | Finance | seeded **Inactive** — tests the deactivated-account path |
+
+**Globex Industries** (org code `globex`) — a minimal second tenant:
+`casey@globex.example` (Admin). Its one asset is deliberately also tagged
+`AF-0001`, proving tags are scoped per organization rather than globally.
+
+To exercise signup itself, visit `/signup` and either create a workspace (you
+become its Admin) or join `acme`/`globex` by code (you join as an Employee; an
+Admin promotes you from the Employee Directory).
+
+## Deploying
+
+The app needs a Node runtime — Prisma, Auth.js JWT sessions and `proxy.js` all
+execute server-side, so a static export won't work.
+
+1. Import the repo at [vercel.com/new](https://vercel.com/new).
+2. Provision Postgres ([Neon](https://neon.tech) or [Supabase](https://supabase.com)) and grab **both** connection strings — pooled and direct.
+3. Set env vars: `DATABASE_URL` (pooled), `DIRECT_URL` (direct), `AUTH_SECRET` (a fresh one, never the local value), `AUTH_URL` (your production URL).
+4. Apply migrations against production using the **direct** URL:
    ```bash
-   DATABASE_URL="<production-url>" npx prisma migrate deploy
+   DATABASE_URL="<direct-production-url>" npx prisma migrate deploy
    ```
-5. **Seed (optional)** — only if you want a demo organization live:
-   ```bash
-   DATABASE_URL="<production-url>" node prisma/seed.mjs
-   ```
-   Otherwise leave the database empty and let your first real user sign up
-   via "Create a workspace" on `/signup` — they become that organization's
-   Admin.
-6. **Deploy** — `vercel --prod`, or just push to the connected GitHub branch.
+5. Deploy. `postinstall` runs `prisma generate`, so the client always matches the committed schema — no extra build config.
 
-Because every table, route, and query is scoped by `organizationId`
-([see Business rules](#business-rules-enforced-server-side)), this one
-deployment safely serves every organization that signs up — no per-tenant
-infrastructure needed.
+Serverless functions each open their own DB connection, which is why runtime
+traffic must go through the pooler; skipping that exhausts Postgres' connection
+limit under real load. Because every table and query is org-scoped, this single
+deployment serves every organization that signs up — no per-tenant
+infrastructure.
+
+## Design
+
+The UI follows a "quiet luxury" spec: Geist for UI, IBM Plex Sans 300 for
+display headings, Courier Prime for the logo, all via `next/font`. Letter
+spacing is driven by two CSS variables (`--tracking-heading`,
+`--tracking-base`) rather than scattered per-component values. Icons come from
+[Iconoir](https://iconoir.com), re-exported through a single
+[`components/icons.js`](./components/icons.js) — swapping icon libraries is a
+one-file change. Motion is hand-rolled: scroll reveals, word-by-word blur-in
+headings, and animated `<canvas>` pixel glyphs.
+
+## Not in scope
+
+File uploads (asset photos are a decorative drop-zone) and password reset
+(no email infrastructure) — both are stubbed in the UI rather than half-built.

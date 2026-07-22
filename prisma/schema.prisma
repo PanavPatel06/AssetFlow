@@ -9,8 +9,17 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection string (e.g. Neon/Supabase's "pooled"/"pgbouncer" URL) —
+  // used by the running app. Serverless functions open a fresh connection per
+  // invocation, so an unpooled URL here exhausts Postgres' connection limit
+  // within minutes of real traffic.
+  url       = env("DATABASE_URL")
+  // Direct (unpooled) connection string — used only by `prisma migrate
+  // deploy`/`db push`, which need a session-mode connection pgbouncer's
+  // transaction-mode pooling doesn't support. Falls back to DATABASE_URL if
+  // the provider doesn't distinguish the two (e.g. local dev).
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
